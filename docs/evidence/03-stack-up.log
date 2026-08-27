@@ -1,0 +1,165 @@
+﻿----------------------------------------------------------------
+### Bring up SQL Server, create database, apply schema, seed (idempotent)
+COMMAND   : ./scripts/up.sh
+CWD       : /c/Users/abual/devops-tasks/03-mssql
+TIMESTAMP : 2026-08-25 23:57:51 +0300
+----------------------------------------------------------------
+
+==> 1. Configuration
+    .env present, left untouched
+    SA password secret present, left untouched
+
+==> 2. Build images
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.01kB done
+#1 DONE 0.0s
+
+#2 [mssql internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.52kB done
+#2 DONE 0.0s
+
+#3 [backup internal] load build definition from Dockerfile
+#3 transferring dockerfile: 783B done
+#3 DONE 0.0s
+
+#4 [mssql internal] load metadata for mcr.microsoft.com/mssql/server:2022-latest@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89
+#4 DONE 0.0s
+
+#5 [mssql internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 [backup internal] load .dockerignore
+#6 transferring context: 2B done
+#6 DONE 0.0s
+
+#7 [mssql 1/3] FROM mcr.microsoft.com/mssql/server:2022-latest@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89
+#7 resolve mcr.microsoft.com/mssql/server:2022-latest@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89 0.0s done
+#7 DONE 0.0s
+
+#8 [backup internal] load build context
+#8 transferring context: 121B done
+#8 DONE 0.0s
+
+#9 [mssql internal] load build context
+#9 transferring context: 35B done
+#9 DONE 0.0s
+
+#10 [backup 2/4] COPY lib.sh backup.sh retention.sh scheduler.sh /opt/backup/
+#10 CACHED
+
+#11 [backup 3/4] RUN chmod 0755 /opt/backup/*.sh && mkdir -p /backups && chown -R mssql:root /backups /opt/backup
+#11 CACHED
+
+#12 [backup 4/4] WORKDIR /opt/backup
+#12 CACHED
+
+#13 [mssql 2/3] COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+#13 CACHED
+
+#14 [mssql 3/3] RUN chmod 0755 /usr/local/bin/entrypoint.sh
+#14 CACHED
+
+#15 [backup] exporting to image
+#15 exporting layers done
+#15 exporting manifest sha256:b87a28815c7e2998520237a250c586c5e37ec31ee1feaacf2e164677ba9d0161 done
+#15 exporting config sha256:2077b49815f0d623e6e7a4c6a41dfba558be9d95e7c1170270055106354dcfe9 done
+#15 exporting attestation manifest sha256:566de521f5391b5a77bfece2032d6ca39122b58d46751949798eaecbf865d0b3 0.1s done
+#15 exporting manifest list sha256:f368d4b0045ed476dda5fbf8e64a15f9fa8d13622f4512aec04519a6480fcaac
+#15 exporting manifest list sha256:f368d4b0045ed476dda5fbf8e64a15f9fa8d13622f4512aec04519a6480fcaac 0.1s done
+#15 naming to docker.io/library/task03-backup:1.0.0 0.0s done
+#15 unpacking to docker.io/library/task03-backup:1.0.0 0.0s done
+#15 DONE 0.3s
+
+#16 [mssql] exporting to image
+#16 exporting layers done
+#16 exporting manifest sha256:64ac5f0af80e15abb0b5fbc25188e5009688f4a353c7b1e440c131621af819b8 done
+#16 exporting config sha256:eeaa2f57b85e44d30696610867fb1209e4f24fe85d9a5750a37adfcfa12e7366 done
+#16 exporting attestation manifest sha256:5589ae140b9e1ba8a6d7346160a80d16d9030e0a350e11f99fd9c867e74f0e44 0.1s done
+#16 exporting manifest list sha256:caaca6dab9f656f22d0d27d0b81c992e1950f91089f0c63de75b60f7a4de0be9 0.1s done
+#16 naming to docker.io/library/task03-mssql:1.0.0 0.0s done
+#16 unpacking to docker.io/library/task03-mssql:1.0.0 0.0s done
+#16 DONE 0.3s
+
+#17 [mssql] resolving provenance for metadata file
+#17 DONE 0.0s
+
+#18 [backup] resolving provenance for metadata file
+#18 DONE 0.0s
+ task03-backup:1.0.0  Built
+ task03-mssql:1.0.0  Built
+
+==> 3. Start the stack
+ Container task03-mssql  Recreate
+ Container task03-mssql  Recreated
+ Container task03-backup  Recreate
+ Container task03-backup  Recreated
+ Container task03-mssql  Starting
+ Container task03-mssql  Started
+ Container task03-mssql  Waiting
+ Container task03-mssql  Healthy
+ Container task03-backup  Starting
+ Container task03-backup  Started
+ Container task03-mssql  Waiting
+ Container task03-backup  Waiting
+ Container task03-backup  Healthy
+ Container task03-mssql  Healthy
+
+==> 4. Service state
+NAME            IMAGE                 COMMAND                  SERVICE   CREATED          STATUS                   PORTS
+task03-backup   task03-backup:1.0.0   "/opt/backup/schedul…"   backup    9 seconds ago    Up 1 second              1433/tcp
+task03-mssql    task03-mssql:1.0.0    "/usr/local/bin/entr…"   mssql     10 seconds ago   Up 7 seconds (healthy)   0.0.0.0:1433->1433/tcp, [::]:1433->1433/tcp
+
+==> 5. Create database, schema and seed (idempotent)
+
+--- sql/01-create-database.sql ---
+Database AppDb already exists, leaving it alone
+AppDb already in FULL recovery model
+database                                                                                                                         recovery_model                                               page_verify                                                  state                                                       
+-------------------------------------------------------------------------------------------------------------------------------- ------------------------------------------------------------ ------------------------------------------------------------ ------------------------------------------------------------
+AppDb                                                                                                                            FULL                                                         CHECKSUM                                                     ONLINE                                                      
+
+(1 rows affected)
+
+--- sql/02-schema.sql ---
+Changed database context to 'AppDb'.
+Schema ready.
+table                                                                                                                            foreign_keys check_constraints indexes    
+-------------------------------------------------------------------------------------------------------------------------------- ------------ ----------------- -----------
+customers                                                                                                                                   0                 2           2
+order_items                                                                                                                                 2                 2           4
+orders                                                                                                                                      1                 1           3
+products                                                                                                                                    0                 2           2
+
+(4 rows affected)
+
+--- sql/03-seed.sql ---
+Changed database context to 'AppDb'.
+Seed complete.
+table       rows       
+----------- -----------
+customers            60
+products             40
+orders              300
+order_items         750
+
+==> 6. Current state
+Changed database context to 'AppDb'.
+table       rows                 checksum    id_sum              
+----------- -------------------- ----------- --------------------
+customers                     60  1717351129                 1830
+products                      40  1666377240               596000
+orders                       300  1234855848                 9150
+order_items                  750  -361695091             33093050
+fingerprint                                                                                                                                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FINGERPRINT:60|40|300|750|1717351129|1666377240|1234855848|-361695091|33093050                                                                                                              
+orphan_check                                                                      
+----------------------------------------------------------------------------------
+ORPHANS:0|0|0                                                                     
+
+==> Stack is up
+    connect: sqlcmd -S 127.0.0.1,1433 -U sa -C
+    checks : scripts/verify.sh
+EXIT CODE : 0
+

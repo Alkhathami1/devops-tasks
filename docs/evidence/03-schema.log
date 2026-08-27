@@ -1,0 +1,115 @@
+﻿----------------------------------------------------------------
+### Schema and data inventory; constraints proven enforced
+COMMAND   : ./scripts/checks/schema-report.sh
+CWD       : /c/Users/abual/devops-tasks/03-mssql
+TIMESTAMP : 2026-08-25 23:58:07 +0300
+----------------------------------------------------------------
+=== Schema and data inventory ===
+
+--- database properties ---
+database                                                                                                                         recovery_model                                               page_verify                                                  state                                                        compat
+-------------------------------------------------------------------------------------------------------------------------------- ------------------------------------------------------------ ------------------------------------------------------------ ------------------------------------------------------------ ------
+AppDb                                                                                                                            FULL                                                         CHECKSUM                                                     ONLINE                                                          160
+
+(1 rows affected)
+
+--- tables, with row counts and storage ---
+Changed database context to 'AppDb'.
+table                                                                                                                            row_count            size_mb     
+-------------------------------------------------------------------------------------------------------------------------------- -------------------- ------------
+customers                                                                                                                                          60          .07
+order_items                                                                                                                                       750          .20
+orders                                                                                                                                            300          .07
+products                                                                                                                                           40          .07
+
+(4 rows affected)
+
+--- foreign keys ---
+Changed database context to 'AppDb'.
+constraint                                                                                                                       child_table                                                                                                                      parent_table                                                                                                                     on_delete                                                   
+-------------------------------------------------------------------------------------------------------------------------------- -------------------------------------------------------------------------------------------------------------------------------- -------------------------------------------------------------------------------------------------------------------------------- ------------------------------------------------------------
+FK_items_order                                                                                                                   order_items                                                                                                                      orders                                                                                                                           CASCADE                                                     
+FK_items_product                                                                                                                 order_items                                                                                                                      products                                                                                                                         NO_ACTION                                                   
+FK_orders_customer                                                                                                               orders                                                                                                                           customers                                                                                                                        NO_ACTION                                                   
+
+(3 rows affected)
+
+--- check and unique constraints ---
+Changed database context to 'AppDb'.
+table                                                                                                                            check_constraint                                                                                                                 definition                                                                                                                                                                                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------- -------------------------------------------------------------------------------------------------------------------------------- ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+customers                                                                                                                        CK_customers_country                                                                                                             ([country_code]=upper([country_code]))                                                                                                                                                                                                                          
+customers                                                                                                                        CK_customers_email_shape                                                                                                         ([email] like '%_@_%.__%')                                                                                                                                                                                                                                      
+order_items                                                                                                                      CK_items_price                                                                                                                   ([unit_price]>=(0))                                                                                                                                                                                                                                             
+order_items                                                                                                                      CK_items_quantity                                                                                                                ([quantity]>(0))                                                                                                                                                                                                                                                
+orders                                                                                                                           CK_orders_status                                                                                                                 ([status]='CANCELLED' OR [status]='SHIPPED' OR [status]='PAID' OR [status]='PENDING')                                                                                                                                                                           
+products                                                                                                                         CK_products_price                                                                                                                ([unit_price]>(0))                                                                                                                                                                                                                                              
+products                                                                                                                         CK_products_stock                                                                                                                ([stock_qty]>=(0))                                                                                                                                                                                                                                              
+
+(7 rows affected)
+
+--- indexes ---
+Changed database context to 'AppDb'.
+table                                                                                                                            index                                                                                                                            type                                                         unique
+-------------------------------------------------------------------------------------------------------------------------------- -------------------------------------------------------------------------------------------------------------------------------- ------------------------------------------------------------ ------
+customers                                                                                                                        PK_customers                                                                                                                     CLUSTERED                                                         1
+customers                                                                                                                        UQ_customers_email                                                                                                               NONCLUSTERED                                                      1
+order_items                                                                                                                      IX_items_order                                                                                                                   NONCLUSTERED                                                      0
+order_items                                                                                                                      IX_items_product                                                                                                                 NONCLUSTERED                                                      0
+order_items                                                                                                                      PK_order_items                                                                                                                   CLUSTERED                                                         1
+order_items                                                                                                                      UQ_items_order_product                                                                                                           NONCLUSTERED                                                      1
+orders                                                                                                                           IX_orders_customer                                                                                                               NONCLUSTERED                                                      0
+orders                                                                                                                           IX_orders_date                                                                                                                   NONCLUSTERED                                                      0
+orders                                                                                                                           PK_orders                                                                                                                        CLUSTERED                                                         1
+products                                                                                                                         PK_products                                                                                                                      CLUSTERED                                                         1
+products                                                                                                                         UQ_products_sku                                                                                                                  NONCLUSTERED                                                      1
+
+(11 rows affected)
+
+--- sample of the data, joined across three tables ---
+Changed database context to 'AppDb'.
+order_id    full_name                                                                                                                status           line_count  order_total                             
+----------- ------------------------------------------------------------------------------------------------------------------------ ---------------- ----------- ----------------------------------------
+          1 Customer 001                                                                                                             PAID                       2                                   114.50
+          2 Customer 002                                                                                                             SHIPPED                    3                                   471.00
+          3 Customer 003                                                                                                             CANCELLED                  2                                   714.50
+          4 Customer 004                                                                                                             PENDING                    3                                  1256.00
+          5 Customer 005                                                                                                             PAID                       2                                   608.50
+          6 Customer 006                                                                                                             SHIPPED                    3                                   887.00
+          7 Customer 007                                                                                                             CANCELLED                  2                                   964.00
+          8 Customer 008                                                                                                             PENDING                    3                                  1854.00
+
+(8 rows affected)
+
+--- state fingerprint ---
+Changed database context to 'AppDb'.
+table       rows                 checksum    id_sum              
+----------- -------------------- ----------- --------------------
+customers                     60  1717351129                 1830
+products                      40  1666377240               596000
+orders                       300  1234855848                 9150
+order_items                  750  -361695091             33093050
+fingerprint                                                                                                                                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FINGERPRINT:60|40|300|750|1717351129|1666377240|1234855848|-361695091|33093050                                                                                                              
+orphan_check                                                                      
+----------------------------------------------------------------------------------
+ORPHANS:0|0|0                                                                     
+
+--- constraints are enforced, not decorative ---
+    attempting an insert that violates CK_products_price (unit_price > 0):
+      Changed database context to 'AppDb'.
+      Msg 547, Level 16, State 1, Server b18f0ab97122, Line 1
+      The INSERT statement conflicted with the CHECK constraint "CK_products_price". The conflict occurred in database "AppDb", table "dbo.products", column 'unit_price'.
+      The statement has been terminated.
+[PASS] negative price rejected by CK_products_price
+    attempting an order for a customer that does not exist:
+      Changed database context to 'AppDb'.
+      Msg 547, Level 16, State 1, Server b18f0ab97122, Line 1
+      The INSERT statement conflicted with the FOREIGN KEY constraint "FK_orders_customer". The conflict occurred in database "AppDb", table "dbo.customers", column 'customer_id'.
+      The statement has been terminated.
+[PASS] orphan order rejected by FK_orders_customer
+
+RESULT: SCHEMA CHECKS PASSED
+EXIT CODE : 0
+

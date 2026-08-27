@@ -1,0 +1,71 @@
+﻿----------------------------------------------------------------
+### Point-in-time recovery: STOPAT between two committed marker rows
+COMMAND   : ./scripts/drills/02-point-in-time.sh
+CWD       : /c/Users/abual/devops-tasks/03-mssql
+TIMESTAMP : 2026-08-26 00:01:29 +0300
+----------------------------------------------------------------
+=== DRILL 2: point-in-time recovery ===
+
+--- 0. preconditions ---
+    recovery model: FULL
+[PASS] FULL recovery model - transaction log backups are possible
+
+--- t0. full backup (the base of the chain) ---
+BACKUP DATABASE successfully processed 554 pages in 0.099 seconds (43.678 MB/sec).
+[PASS] base full backup taken
+
+--- t1. INSERT marker A ---
+    MARKER-A committed at (server time): 2026-08-25T21:01:31.203
+
+--- t2. transaction log backup #1 ---
+BACKUP LOG successfully processed 19 pages in 0.015 seconds (9.635 MB/sec).
+[PASS] log backup #1 taken
+
+--- t3. record the recovery target ---
+    STOPAT target (server local time): 2026-08-25T21:01:35.666
+
+--- t4. INSERT marker B (AFTER the recovery target) ---
+    MARKER-B committed at (server time): 2026-08-25T21:01:39.109
+
+    timeline:  A=2026-08-25T21:01:31.203   STOPAT=2026-08-25T21:01:35.666   B=2026-08-25T21:01:39.109
+    markers currently in the database: 2 (expect 2)
+[PASS] both markers present before recovery
+
+--- t5. transaction log backup #2 (contains marker B) ---
+BACKUP LOG successfully processed 4 pages in 0.014 seconds (1.953 MB/sec).
+[PASS] log backup #2 taken
+
+--- restore chain: full NORECOVERY -> log NORECOVERY -> log STOPAT RECOVERY ---
+    NORECOVERY leaves the database in RESTORING state so further log files
+    can be applied. Only the final restore uses RECOVERY, which rolls back
+    uncommitted transactions and brings the database online. Using RECOVERY
+    too early ends the chain and makes the remaining logs unusable.
+
+    [1/3] RESTORE DATABASE ... WITH NORECOVERY
+RESTORE DATABASE successfully processed 554 pages in 0.050 seconds (86.484 MB/sec).
+          database state now: RESTORING
+[PASS] database is RESTORING - the chain is open
+    [2/3] RESTORE LOG #1 ... WITH NORECOVERY
+RESTORE LOG successfully processed 19 pages in 0.026 seconds (5.558 MB/sec).
+[PASS] log #1 applied
+    [3/3] RESTORE LOG #2 ... WITH STOPAT, RECOVERY
+          STOPAT = 2026-08-25T21:01:35.666
+RESTORE LOG successfully processed 4 pages in 0.025 seconds (1.093 MB/sec).
+[PASS] log #2 applied with STOPAT, database recovered
+    point-in-time restore wall time: 3608 ms
+
+--- the proof: which markers survived? ---
+    database state: ONLINE
+    MARKER-A (committed BEFORE the target): 1
+    MARKER-B (committed AFTER  the target): 0
+    total markers: 1
+[PASS] database is ONLINE after recovery
+[PASS] MARKER-A survived - data committed before the target was recovered
+[PASS] MARKER-B is ABSENT - recovery genuinely stopped at the target instant
+    customers after PITR  : 60
+    order_items after PITR: 750
+[PASS] the seeded schema survived the point-in-time restore intact
+
+RESULT: DRILL 2 PASSED
+EXIT CODE : 0
+

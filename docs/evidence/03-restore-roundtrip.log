@@ -1,0 +1,63 @@
+﻿----------------------------------------------------------------
+### Restore round trip: fingerprint, backup, destroy data and schema, restore, prove exact match
+COMMAND   : ./scripts/drills/01-restore-roundtrip.sh
+CWD       : /c/Users/abual/devops-tasks/03-mssql
+TIMESTAMP : 2026-08-26 00:01:07 +0300
+----------------------------------------------------------------
+=== DRILL 1: backup -> destroy -> restore round trip ===
+
+--- 1. state before any damage ---
+    customers  : 60
+    products   : 40
+    orders     : 300
+    order_items: 750
+    fingerprint: 60|40|300|750|1717351129|1666377240|1234855848|-361695091|33093050
+[PASS] captured a pre-damage fingerprint
+
+--- 2. full backup (WITH CHECKSUM), then RESTORE VERIFYONLY ---
+BACKUP DATABASE successfully processed 554 pages in 0.091 seconds (47.518 MB/sec).
+[PASS] full backup written
+The backup set on file 1 is valid.
+[PASS] RESTORE VERIFYONLY passed - the backup is restorable
+    backup size: 4612096 bytes
+
+--- 3. DESTROYING data ---
+    deleting every order_item row, and dropping dbo.products entirely
+
+(300 rows affected)
+
+--- 4. proving the damage is real ---
+    order_items rows now : 0
+    orders rows now      : 0
+    foreign keys now     : 2 (was 3)
+    dbo.products exists  : 0 (0 = dropped)
+[PASS] order_items emptied
+[PASS] orders emptied
+[PASS] dbo.products dropped - schema damage, not just data loss
+
+--- 5. restoring from the backup ---
+100 percent processed.
+RESTORE DATABASE successfully processed 554 pages in 0.050 seconds (86.484 MB/sec).
+    restore wall time: 2092 ms
+[PASS] RESTORE DATABASE completed
+
+--- 6. does the restored data match the original EXACTLY? ---
+    customers  : 60 -> 60
+    products   : 40 -> 40
+    orders     : 300 -> 300
+    order_items: 750 -> 750
+
+    fingerprint before: 60|40|300|750|1717351129|1666377240|1234855848|-361695091|33093050
+    fingerprint after : 60|40|300|750|1717351129|1666377240|1234855848|-361695091|33093050
+[PASS] fingerprints are IDENTICAL - the restore is exact, not merely approximate
+[PASS] order_items row count restored (750)
+[PASS] dbo.products table and rows restored (40)
+    orphaned rows across all foreign keys: 0
+[PASS] referential integrity intact after restore
+    foreign keys restored : 3
+    check constraints     : 7
+[PASS] foreign keys restored with the schema
+
+RESULT: DRILL 1 PASSED
+EXIT CODE : 0
+

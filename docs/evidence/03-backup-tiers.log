@@ -1,0 +1,100 @@
+﻿----------------------------------------------------------------
+### Three-tier backup strategy: full/diff/log, verification, retention, SIMPLE-mode failure
+COMMAND   : ./scripts/drills/03-backup-tiers.sh
+CWD       : /c/Users/abual/devops-tasks/03-mssql
+TIMESTAMP : 2026-08-25 23:58:25 +0300
+----------------------------------------------------------------
+=== DRILL 3: three-tier backup strategy ===
+
+--- the scheduler is running and taking backups unattended ---
+    sidecar status: running
+    restart policy: unless-stopped
+
+    recent scheduler log:
+      2026-08-25T20:58:03Z [INFO] database AppDb is present
+      2026-08-25T20:58:03Z [INFO] taking initial full backup so a restore base exists immediately
+      2026-08-25T20:58:03Z [INFO] starting full backup of AppDb -> /backups/full/AppDb-full-20260825-205803.bak
+      25 percent processed.
+      51 percent processed.
+      75 percent processed.
+      100 percent processed.
+      Processed 544 pages for database 'AppDb', file 'AppDb' on file 1.
+      Processed 2 pages for database 'AppDb', file 'AppDb_log' on file 1.
+      BACKUP DATABASE successfully processed 546 pages in 0.109 seconds (39.098 MB/sec).
+      The backup set on file 1 is valid.
+      2026-08-25T20:58:04Z [INFO] full backup complete and verified: /backups/full/AppDb-full-20260825-205803.bak (569344 bytes)
+
+--- taking one of each tier on demand (same code the scheduler runs) ---
+
+  [full]
+      2026-08-25T20:58:27Z [INFO] starting full backup of AppDb -> /backups/full/AppDb-full-20260825-205827.bak
+      2026-08-25T20:58:27Z [INFO] full backup complete and verified: /backups/full/AppDb-full-20260825-205827.bak (573440 bytes)
+[PASS] full backup taken and verified
+
+  [diff]
+      2026-08-25T20:58:27Z [INFO] starting diff backup of AppDb -> /backups/diff/AppDb-diff-20260825-205827.dif
+      2026-08-25T20:58:28Z [INFO] diff backup complete and verified: /backups/diff/AppDb-diff-20260825-205827.dif (118784 bytes)
+[PASS] diff backup taken and verified
+
+  [log]
+      2026-08-25T20:58:28Z [INFO] starting log backup of AppDb -> /backups/log/AppDb-log-20260825-205828.trn
+      2026-08-25T20:58:28Z [INFO] log backup complete and verified: /backups/log/AppDb-log-20260825-205828.trn (282624 bytes)
+[PASS] log backup taken and verified
+
+--- backup history from msdb (SQL Server's own record) ---
+tier finished            size_kb        compressed_kb  checksums first_lsn                   last_lsn                   
+---- ------------------- -------------- -------------- --------- --------------------------- ---------------------------
+LOG  2026-08-25 20:58:28         1296.0          259.2         1           42000000026400001           42000000271200001
+DIFF 2026-08-25 20:58:28          920.0           97.4         1           42000000268800001           42000000271200001
+FULL 2026-08-25 20:58:27         4440.0          544.7         1           42000000258400001           42000000260800001
+FULL 2026-08-25 20:58:03         4440.0          538.8         1           42000000222400001           42000000224800001
+FULL 2026-08-25 20:57:35         2840.0          476.1         1           42000000026400001           42000000028800001
+
+(5 rows affected)
+
+--- every backup carries checksums ---
+    backups without checksums: 0
+[PASS] all backups written WITH CHECKSUM
+
+--- files on the backups volume ---
+    full  3 file(s), 1.6M
+    diff  1 file(s), 120K
+    log   1 file(s), 280K
+[PASS] all three tiers have produced files on disk
+
+--- why FULL recovery is mandatory: what SIMPLE recovery does to log backups ---
+    Switching to SIMPLE and attempting a log backup, to show the failure
+    rather than merely assert it. This is Msg 4208.
+
+    recovery model now: SIMPLE
+
+    attempting BACKUP LOG under SIMPLE recovery:
+      Msg 4208, Level 16, State 1, Server b18f0ab97122, Line 1
+      The statement BACKUP LOG is not allowed while the recovery model is SIMPLE. Use BACKUP DATABASE or change the recovery model using ALTER DATABASE.
+      Msg 3013, Level 16, State 1, Server b18f0ab97122, Line 1
+      BACKUP LOG is terminating abnormally.
+[PASS] BACKUP LOG correctly FAILED under SIMPLE recovery - PITR is impossible in this model
+
+    restoring FULL recovery model:
+    recovery model now: FULL
+[PASS] FULL recovery restored
+
+    NOTE: a SIMPLE -> FULL round trip BREAKS the log chain. Until a new
+    full backup is taken the database is only pseudo-FULL and log backups
+    have no base. Taking one now to close the gap:
+      2026-08-25T20:58:33Z [INFO] starting full backup of AppDb -> /backups/full/AppDb-full-20260825-205833.bak
+      2026-08-25T20:58:33Z [INFO] full backup complete and verified: /backups/full/AppDb-full-20260825-205833.bak (573440 bytes)
+[PASS] log chain re-established after the recovery model round trip
+
+--- retention ---
+    windows: full=1440m diff=360m log=120m
+      2026-08-25T20:58:34Z [INFO] retention pass starting
+      2026-08-25T20:58:34Z [INFO] retention: full 4 -> 4 files (window 1440m)
+      2026-08-25T20:58:34Z [INFO] retention: differential 1 -> 1 files (window 360m)
+      2026-08-25T20:58:34Z [INFO] retention: log 2 -> 2 files (window 120m)
+      2026-08-25T20:58:34Z [INFO] retention pass complete
+[PASS] retention pass executed
+
+RESULT: DRILL 3 PASSED
+EXIT CODE : 0
+
