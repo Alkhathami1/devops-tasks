@@ -2,7 +2,7 @@
 ### REPORT.pdf font, size, pagination, margins and length verified by extraction
 COMMAND   : python scripts/verify-pdf.py REPORT.pdf
 CWD       : /c/Users/abual/devops-tasks
-TIMESTAMP : 2026-08-27 22:09:18 +0300
+TIMESTAMP : 2026-08-27 23:01:15 +0300
 ----------------------------------------------------------------
 file       : REPORT.pdf
 pages      : 20
@@ -19,18 +19,18 @@ page size  : 595.3 x 841.9 pt (210 x 297 mm)
 [PASS] every font used is embedded in the file
 
 --- 2. type sizes actually used ---
-     11.0 pt  Arial                    19296 chars
-      8.5 pt  Arial                     8882 chars
-     11.0 pt  ArialBold                 2857 chars
+     11.0 pt  Arial                    20142 chars
+      8.5 pt  Arial                     8979 chars
+     11.0 pt  ArialBold                 2918 chars
      10.0 pt  Arial                     2827 chars
      10.5 pt  ArialBold                 1348 chars
-      9.8 pt  Consolas                  1095 chars
+      9.8 pt  Consolas                  1125 chars
      15.5 pt  ArialBold                  338 chars
-      8.5 pt  ArialBold                  256 chars
+      8.5 pt  ArialBold                  280 chars
      12.5 pt  ArialBold                  234 chars
      11.0 pt  ArialItalic                168 chars
 [PASS] dominant body face is Arial at 11.0 pt
-[PASS] monospace used for 1203 characters of terminal output
+[PASS] monospace used for 1233 characters of terminal output
 
 --- 3. page numbers ---
 [PASS] every page after the cover carries a number (19 pages)

@@ -196,7 +196,7 @@ channel decodes that feed and encodes HEVC into the ARCHIVE output group, so the
 That is the one place to state it plainly: **the codec requirement is met at the
 deliverable rather than on the wire.** The task asks to record the stream to S3
 in HEVC, and the recorded artifact is HEVC, confirmed by ffprobe on a segment
-pulled back out of the bucket (5.8).
+pulled back out of the bucket (5.9).
 
 The received wisdom is that RTMP cannot carry HEVC. I wrote the test expecting a
 mux failure and got the opposite: **the mux succeeded.** From `06-analysis.log`:
@@ -393,7 +393,7 @@ Supporting scripts:
 | `scripts/channel.sh` | `start`, `stop`, `status`, `endpoints`. Stamps the start time and prints elapsed running time on every call |
 | `scripts/obs-configure.sh` | Installs the `configs/obs/` profile and scene collection under `%APPDATA%\obs-studio`, writes the `service.json` naming the ingest, and selects both in `global.ini` |
 | `scripts/obs-evidence.sh` | Reads the installed profile back off disk, resolves the OBS binary's version, and quotes the connection, streaming and recording lines from OBS's own log |
-| `scripts/trim-recording.sh` | Trims the screen recording to the streaming window with a stream copy, remuxes to mp4, probes either side and measures what the keyframe-aligned cut actually removed. Refuses to write inside the repository |
+| `scripts/trim-recording.sh` | Trims the recording to the streaming window with a stream copy, remuxes to mp4, probes either side and measures what the keyframe-aligned cut actually removed. Refuses to write inside the repository |
 | `scripts/verify-archive.sh` | Lists the objects MediaLive wrote, downloads one, and runs ffprobe on it |
 | `scripts/teardown-check.sh` | Queries AWS per resource class after destroy |
 
@@ -631,12 +631,12 @@ and the connection, with the ingest address masked by the capture path:
 Three checks pass on that log: the RTMP connection, the streaming start and the
 recording start.
 
-OBS recorded the screen locally while it streamed — `==== Recording Start ====`
-at 20:41:58.966, 1.356 s before the RTMP connection completed. That recording is
-written outside the repository and is not tracked; it is published as a release
-asset on the tag. `scripts/trim-recording.sh` trims it to the streaming window
-with a stream copy and remuxes it to mp4, taking that 1.356 s as its default
-offset, and probes either side (`06-recording.log`):
+OBS recorded locally while it streamed — `==== Recording Start ====` at
+20:41:58.966, 1.356 s before the RTMP connection completed. The recording is
+written outside the repository and is not tracked.
+`scripts/trim-recording.sh` trims it to the streaming window with a stream copy
+and remuxes it to mp4, taking that 1.356 s as its default offset, and probes
+either side (`06-recording.log`):
 
 | Property | As OBS wrote it | After the trim and remux |
 |---|---|---|
@@ -656,7 +656,43 @@ byte count rises by 303,183 across the remux while carrying less content, and
 since the log records no re-encode, that difference belongs to the containers
 rather than to the picture.
 
-### 5.7 The archive, as written by MediaLive
+### 5.7 What the feed carried, and the check that was missing
+
+Every measurement above describes an envelope. None of them looks at the image,
+and that turned out to matter: `06-picture-check.log` shows the contribution leg
+carried no picture at all.
+
+| Artefact | Black | Sampled luma (YAVG) | Verdict |
+|---|---|---|---|
+| The segment MediaLive wrote to S3 | 9.983 s of 10.005 s, 99.8% | min 16.00, mean 16.00, max 16.00 | no picture |
+| The OBS recording | 335.283 s of 335.304 s, 100.0% | 68 frames, all 16.00 | no picture |
+| The Phase 1 local encode, as a control | 0.000 s, 0.0% | min 126.20, mean 126.21, max 126.22 | picture |
+
+The scene installed by `obs-configure.sh` holds a single `monitor_capture`
+source. It produced nothing, so OBS encoded and pushed a black canvas, MediaLive
+decoded it, re-encoded it as HEVC and archived it. Limited-range black sits at
+luma 16, which is exactly what both files measure; the Phase 1 encode is in the
+same table to show the check can report a picture when there is one.
+
+**The pipeline claims are unaffected, and the reason is worth stating.** RTMP
+ingest, `hevc (Main)` at 1920x1080p60, MPEG-TS stream type `0x24`, AAC at
+192 kb/s, 36 archived segments, teardown verified — all of these are properties
+of the encoder and the transport, and a black frame satisfies them exactly as a
+photographed one does. What is not demonstrated is that a picture crossed the
+link.
+
+**Nothing that was green could have gone red.** OBS's log reported a successful
+connection, a streaming start and a recording start; ffprobe reported the right
+codec, resolution, frame rate and bitrate; the object listing reported 36
+segments. Every one of those was true. Not one of them examines a pixel, so the
+suite had no way to distinguish a working contribution feed from a blank one —
+a check that cannot fail for the thing you care about is not evidence of it.
+`scripts/picture-check.sh` closes that: it measures black duration and sampled
+luma, exits non-zero on a blank file, and is now called from
+`verify-archive.sh`, so a future live run fails on the archive rather than
+passing it.
+
+### 5.8 The archive, as written by MediaLive
 
 `06-s3-archive.log`, bucket `task06-archive-ef6ec5fe`, prefix `live`. The
 listing runs to 36 lines; below are the first three and the last two, with the
@@ -685,7 +721,7 @@ extension. The first object appears at 20:42:14, 13.7 s after OBS logged
 `==== Streaming Start ====` at 20:42:00.328 — one 10-second rollover plus the
 write, reading the two logs against each other.
 
-### 5.8 The segment AWS produced, probed
+### 5.9 The segment AWS produced, probed
 
 `scripts/verify-archive.sh` downloaded `live-hevc1080p60.000000.ts` —
 19,451,232 bytes — and probed it. From `06-s3-archive.log`, with the input path
@@ -715,7 +751,7 @@ produced and S3 stored. `0x0024` is the MPEG-TS stream type for HEVC, and the
 audio lands on 192 kb/s exactly — the requirement floor, hit precisely, because
 MediaLive was configured with that number and produced it.
 
-### 5.9 Teardown
+### 5.10 Teardown
 
 `06-teardown.log`, region `eu-central-1`, captured 2026-08-27 20:50:45 +0300.
 The log prints each class heading and its result on separate lines; they are
@@ -1081,6 +1117,7 @@ Notes for a clean run:
 | `docs/evidence/06-analysis.log` | `scripts/analysis.sh` | the 24-cell BPP table, both VMAF comparisons, the MXF muxer's refusal and the MPEG-2 fallback, and the FLV/HEVC result |
 | `docs/evidence/06-terraform-plan.log` | terraform fmt/validate/plan | `Plan: 10 to add, 0 to change, 0 to destroy.` |
 | `docs/evidence/06-obs.log` | `scripts/obs-evidence.sh` | OBS Studio 32.2.1, the installed profile read back field by field, and OBS's own log lines for the RTMP connection, the streaming start and the recording start |
-| `docs/evidence/06-recording.log` | ffprobe on the OBS screen recording | container, duration, size and stream parameters as OBS wrote the recording and again after the lossless trim and remux |
+| `docs/evidence/06-picture-check.log` | `scripts/picture-check.sh` | Black duration and sampled luma for the archived segment, the OBS recording and the Phase 1 encode as a control - the measurement showing the contribution leg carried no picture |
+| `docs/evidence/06-recording.log` | ffprobe on the OBS recording | container, duration, size and stream parameters as OBS wrote the recording and again after the lossless trim and remux |
 | `docs/evidence/06-s3-archive.log` | `scripts/verify-archive.sh` | the 36-object listing, the downloaded segment's size, and ffprobe on what AWS produced |
 | `docs/evidence/06-teardown.log` | `scripts/teardown-check.sh` | five resource classes queried against AWS after destroy |

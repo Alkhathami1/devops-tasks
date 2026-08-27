@@ -211,7 +211,14 @@ bash scripts/trim-recording.sh "path/to/obs.mkv" "outside/repo/task06.mp4"
 
 **Expect:** the channel reaching `RUNNING`, `.ts` segments appearing in S3, and
 `verify-archive.sh` pulling one back and reporting `hevc (Main)` with stream
-type `0x24` at 1920x1080 and AAC at 192 kb/s.
+type `0x24` at 1920x1080 and AAC at 192 kb/s — then a picture check on that
+segment, which fails the run if the contribution source produced a blank
+canvas. Every other check in the suite passes on a black feed, so this is the
+one that distinguishes a working encoder from a silent one:
+
+```bash
+bash scripts/picture-check.sh out/from-medialive.ts
+```
 
 `channel.sh` prints the elapsed running time on every invocation, and
 `terraform apply` deliberately does not start the channel — creating it and

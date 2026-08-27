@@ -419,7 +419,9 @@ with an H.265 encode and an ARCHIVE output group, and the IAM role MediaLive
 needs. OBS Studio 32.2.1 was installed and configured programmatically - profile and
 scene collection written where OBS reads them, no GUI - and launched with
 `--startstreaming --startrecording`. The channel took that feed and wrote its
-archive to S3.
+archive to S3. The feed itself was blank: OBS's screen-capture source produced
+no image, so what crossed the link and landed in the archive is valid HEVC
+carrying a black picture.
 
 | Measurement | Value | Evidence |
 |---|---|---|
@@ -432,6 +434,7 @@ archive to S3.
 | OBS contribution | 1920x1080, 60/1 fps, RTMP connected, streaming and recording | `06-obs.log` |
 | MediaLive segment | `hevc (Main) … 0x0024`, 1920x1080, 60 fps, AAC 192 kb/s | `06-s3-archive.log` |
 | Archive written | 36 `.ts` segments from the OBS feed | `06-s3-archive.log` |
+| Picture carried | none: archived segment black for 99.8% of its duration, luma 16 | `06-picture-check.log` |
 | Post-destroy sweep | channels, inputs, security groups, buckets, roles clean | `06-teardown.log` |
 
 ### Insights
@@ -456,6 +459,18 @@ a segment measures the container, so the steady-state segments work out to about
 13.67 Mbps against that mux rate, and the first segment reads higher still
 because it carries the initial signaling. Naming the layer is what keeps the
 comparison honest.
+
+**Every check was green and none of them looked at the picture.** OBS logged a
+successful RTMP connection, a streaming start and a recording start; ffprobe
+reported `hevc (Main)` at 1920x1080p60 with AAC at 192 kb/s; the bucket listing
+reported 36 segments. All of that is true, and all of it is true of a black
+feed, because a blank canvas encodes to valid HEVC at the requested parameters
+exactly like a photographed one. The suite measured the envelope and never the
+image, so it could not have failed for the one thing it was carrying. Measuring
+black duration and sampled luma settles it in a line — luma 16 across every
+sampled frame, against 126 for the control — and that check now gates
+`verify-archive.sh`. A check that cannot go red for what you care about is not
+evidence of it.
 
 *Full detail in `06-streaming/WALKTHROUGH.md`; evidence in `06-*.log`.*
 

@@ -1,0 +1,27 @@
+﻿----------------------------------------------------------------
+### What the OBS contribution leg actually carried, measured on the retained artefacts
+COMMAND   : bash scripts/picture-check.sh out/from-medialive.ts /c/Users/abual/obs-recordings/task06-obs-to-medialive.mp4 out/hevc_1080p60_12m.ts
+CWD       : /c/Users/abual/devops-tasks/06-streaming
+TIMESTAMP : 2026-08-27 22:57:50 +0300
+----------------------------------------------------------------
+--- picture check: from-medialive.ts ---
+      duration        : 10.005333 s
+      black duration  : 9.983 s (99.8% of the file)
+      luma sampled    : 2 frames, YAVG min 16.00 / mean 16.00 / max 16.00
+[FAIL] from-medialive.ts carries no picture: black for 99.8% of its duration, peak luma 16.00
+
+--- picture check: task06-obs-to-medialive.mp4 ---
+      duration        : 335.304000 s
+      black duration  : 335.283 s (100.0% of the file)
+      luma sampled    : 68 frames, YAVG min 16.00 / mean 16.00 / max 16.00
+[FAIL] task06-obs-to-medialive.mp4 carries no picture: black for 100.0% of its duration, peak luma 16.00
+
+--- picture check: hevc_1080p60_12m.ts ---
+      duration        : 10.021333 s
+      black duration  : 0.000 s (0.0% of the file)
+      luma sampled    : 2 frames, YAVG min 126.20 / mean 126.21 / max 126.22
+[PASS] hevc_1080p60_12m.ts carries a picture: peak luma 126.22 over 2 sampled frames
+
+RESULT: 2 of 3 file(s) carry no picture
+EXIT CODE : 1
+

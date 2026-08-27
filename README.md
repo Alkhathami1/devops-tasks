@@ -8,8 +8,10 @@ available as [`REPORT.docx`](REPORT.docx).
 **Depth per task** lives in that task's `WALKTHROUGH.md`: the full reasoning,
 the complete steps, the extended findings.
 
-**A screen recording** of the Task 6 stream — OBS contributing to MediaLive while
-the archive lands in S3 — is attached to the tagged release.
+**What the Task 6 feed actually carried** is measured rather than assumed.
+`docs/evidence/06-picture-check.log` records that OBS's screen capture produced
+no image, so the archive MediaLive wrote is valid HEVC carrying a black picture.
+The pipeline is demonstrated; the picture is not.
 
 **Re-run anything** with [`REPRODUCING.md`](REPRODUCING.md) — one block to bring
 each task up, one to verify it, with the expected output named.

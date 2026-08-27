@@ -93,6 +93,17 @@ if [ "${TS_COUNT:-0}" -ge 1 ]; then
   [ "${P_RATE:-0}" -ge 9000000 ] \
     && pass "measured segment bitrate ${P_RATE} bps is consistent with a 12 Mbps target" \
     || fail "measured ${P_RATE} bps is far below the target"
+
+  # Everything above measures the envelope, and every one of those checks
+  # passes on a feed that is entirely black - a blank picture encodes to valid
+  # HEVC at the requested parameters like any other. Without this, the suite
+  # can report a verified archive that carries nothing.
+  echo ""
+  if bash "$(dirname "${BASH_SOURCE[0]}")/picture-check.sh" "$LOCAL"; then
+    pass "the archived segment carries a picture"
+  else
+    fail "the archived segment carries no picture - check the contribution source"
+  fi
 fi
 
 echo ""
