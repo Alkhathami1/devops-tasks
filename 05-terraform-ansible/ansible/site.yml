@@ -1,0 +1,41 @@
+---
+# Task 05 — configure the three tiers.
+#
+# Order matters: the database must be accepting connections before the app
+# tries to migrate against it, and the app must be listening before nginx is
+# asked to proxy to it. Plays run top to bottom, which gives that ordering
+# without any explicit orchestration.
+#
+# Every role is written to be idempotent. `scripts/ansible-run.sh --check-idempotent`
+# runs the whole thing twice and fails if the second run reports any change.
+
+- name: Baseline every host
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - common
+
+- name: Database tier
+  hosts: dbs_tier
+  become: true
+  roles:
+    - db
+
+- name: Application tier
+  hosts: apps_tier
+  become: true
+  roles:
+    - app
+
+- name: Public tier - reverse proxy
+  hosts: nginx
+  become: true
+  roles:
+    - nginx
+
+- name: Public tier - WireGuard VPN
+  hosts: bastion
+  become: true
+  roles:
+    - wireguard

@@ -1,0 +1,63 @@
+---
+- name: Install nginx and openssl
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - openssl
+    state: present
+
+- name: Create the TLS directory
+  ansible.builtin.file:
+    path: /etc/nginx/tls
+    state: directory
+    mode: '0750'
+
+- name: Generate a self-signed certificate
+  # Self-signed because there is no DNS name and no CA for an address that
+  # exists for an hour. Real deployments would use Let's Encrypt or an internal
+  # CA; the TLS mechanics are identical either way, only the trust anchor
+  # differs. Guarded by creates: so a rerun does not regenerate it and report a
+  # change - a fresh certificate every run would break idempotency.
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -nodes -newkey rsa:2048
+      -keyout {{ tls_key }} -out {{ tls_cert }}
+      -days 30 -subj "/CN=task05-nginx"
+    creates: "{{ tls_cert }}"
+  notify: reload nginx
+
+- name: Lock down the private key
+  ansible.builtin.file:
+    path: "{{ tls_key }}"
+    mode: '0600'
+
+- name: Deploy the reverse proxy configuration
+  ansible.builtin.template:
+    src: task05.conf.j2
+    dest: /etc/nginx/sites-available/task05.conf
+    mode: '0644'
+  notify: reload nginx
+
+- name: Enable the site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/task05.conf
+    dest: /etc/nginx/sites-enabled/task05.conf
+    state: link
+  notify: reload nginx
+
+- name: Remove the default site
+  # Left in place it answers on 80 and shadows the intended server block.
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: Validate the configuration before reloading
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Ensure nginx is running
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

@@ -1,0 +1,4 @@
+---
+app_port: 8080
+tls_cert: /etc/nginx/tls/task05.crt
+tls_key: /etc/nginx/tls/task05.key

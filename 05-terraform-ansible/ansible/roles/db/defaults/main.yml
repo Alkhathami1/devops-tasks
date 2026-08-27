@@ -1,0 +1,7 @@
+---
+db_name: appdb
+db_user: appuser
+# Deterministic from a seed so a re-run does not rotate the password and
+# report a change. Real deployments would source this from a secret manager.
+db_password: "{{ 'task05-' + (inventory_hostname + db_name) | hash('sha256') | truncate(20, true, '') }}"
+apps_subnet_cidr: "10.20.1.0/24"

@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Task 05 application tier.
+
+Reads from and writes to the database tier, which is the assignment's
+requirement for this tier. Deliberately stdlib + psycopg2 only: both come from
+Debian packages, so there is no pip step to fail on a host whose only egress is
+Cloud NAT.
+"""
+import json
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import psycopg2
+
+DB = dict(
+    host=os.environ["DB_HOST"],
+    dbname=os.environ["DB_NAME"],
+    user=os.environ["DB_USER"],
+    password=os.environ["DB_PASSWORD"],
+    connect_timeout=5,
+)
+PORT = int(os.environ.get("APP_PORT", "8080"))
+
+
+def query(sql, args=(), fetch=True):
+    with psycopg2.connect(**DB) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, args)
+            return cur.fetchall() if fetch else None
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _send(self, code, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/health":
+            # Reports the database honestly: a 200 while the only datastore is
+            # unreachable tells the proxy to keep sending traffic to a backend
+            # that cannot serve it. Same argument as Task 02.
+            try:
+                query("SELECT 1")
+                self._send(200, {"status": "ok", "database": "reachable",
+                                 "host": os.uname().nodename})
+            except Exception as exc:
+                self._send(503, {"status": "degraded", "database": "unreachable",
+                                 "error": str(exc)})
+            return
+
+        if self.path in ("/", "/api/items"):
+            try:
+                rows = query("SELECT id, name, created_at FROM items ORDER BY id")
+                self._send(200, {
+                    "served_by": os.uname().nodename,
+                    "db_host": DB["host"],
+                    "count": len(rows),
+                    "items": [
+                        {"id": r[0], "name": r[1], "created_at": str(r[2])}
+                        for r in rows
+                    ],
+                })
+            except Exception as exc:
+                self._send(503, {"error": "database unavailable", "detail": str(exc)})
+            return
+
+        self._send(404, {"error": "not found", "path": self.path})
+
+    def do_POST(self):
+        if self.path != "/api/items":
+            self._send(404, {"error": "not found"})
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self._send(400, {"error": "invalid json"})
+            return
+        name = (body.get("name") or "").strip()
+        if not name:
+            self._send(400, {"error": "name is required"})
+            return
+        try:
+            rows = query(
+                "INSERT INTO items (name) VALUES (%s) RETURNING id, name, created_at",
+                (name,),
+            )
+            self._send(201, {"id": rows[0][0], "name": rows[0][1],
+                             "created_at": str(rows[0][2])})
+        except Exception as exc:
+            self._send(503, {"error": "database unavailable", "detail": str(exc)})
+
+    def log_message(self, fmt, *args):
+        print("app %s - %s" % (self.address_string(), fmt % args), flush=True)
+
+
+if __name__ == "__main__":
+    print("task05 app listening on :%d, db=%s" % (PORT, DB["host"]), flush=True)
+    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

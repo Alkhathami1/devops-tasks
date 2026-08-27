@@ -1,0 +1,10 @@
+---
+wg_interface: wg0
+wg_port: 51820
+wg_server_address: "10.99.0.1/24"
+wg_client_address: "10.99.0.2/32"
+wg_dir: /etc/wireguard
+# Routes pushed to the client. Note what is ABSENT: the dbs range. The bastion
+# has no route to the database tier, because public and dbs are not peered, so
+# advertising it would blackhole the client's traffic rather than reach anything.
+wg_allowed_ips: "10.10.0.0/16, 10.20.0.0/16, 10.99.0.0/24"

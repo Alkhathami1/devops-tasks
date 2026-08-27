@@ -1,0 +1,20 @@
+# WireGuard client configuration. Copy to the operator's machine.
+#
+# AllowedIPs lists ONLY the tiers this tunnel can actually reach. The database
+# range (10.30.0.0/16) is deliberately absent: the bastion has no route to it,
+# because the public and dbs VPCs are not peered. Advertising it would send the
+# client's packets into a blackhole rather than to the database - the tunnel
+# would look up while that destination silently failed.
+#
+# Administering the database goes through the app tier instead:
+#   ssh -J ansible@<bastion>,ansible@<app> ansible@<db>
+
+[Interface]
+Address    = {{ wg_client_address }}
+PrivateKey = {{ wg_client_priv }}
+
+[Peer]
+PublicKey  = {{ wg_server_pub }}
+Endpoint   = {{ ansible_host }}:{{ wg_port }}
+AllowedIPs = {{ wg_allowed_ips }}
+PersistentKeepalive = 25

@@ -1,0 +1,38 @@
+---
+- name: Wait for cloud-init to finish
+  # Racing cloud-init produces dpkg lock errors that look like a broken
+  # playbook rather than a timing problem.
+  ansible.builtin.command: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  register: apt_update
+  retries: 5
+  delay: 10
+  until: apt_update is succeeded
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - netcat-openbsd
+      - python3
+      - ca-certificates
+    state: present
+
+- name: Set a descriptive hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Record the tier in /etc/motd
+  ansible.builtin.copy:
+    dest: /etc/motd
+    mode: '0644'
+    content: |
+      Task 05 — {{ inventory_hostname }}
+      tier: {{ group_names | difference(['all']) | join(', ') }}
+      managed by Ansible; changes here will be overwritten

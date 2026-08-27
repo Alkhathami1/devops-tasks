@@ -1,0 +1,98 @@
+---
+- name: Install PostgreSQL
+  ansible.builtin.apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+    state: present
+
+- name: Ensure PostgreSQL is running
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true
+
+- name: Find the PostgreSQL config directory
+  ansible.builtin.shell: >-
+    set -o pipefail && ls -d /etc/postgresql/*/main | head -1
+  args:
+    executable: /bin/bash
+  register: pg_conf_dir
+  changed_when: false
+
+- name: Listen on all interfaces
+  # Default is localhost only, so the app tier cannot connect at all. The
+  # network boundary is enforced by VPC peering and firewall rules, not by
+  # PostgreSQL's listen address.
+  ansible.builtin.lineinfile:
+    path: "{{ pg_conf_dir.stdout }}/postgresql.conf"
+    regexp: '^#?listen_addresses'
+    line: "listen_addresses = '*'"
+  notify: restart postgresql
+
+- name: Allow the apps subnet, and only the apps subnet
+  ansible.builtin.lineinfile:
+    path: "{{ pg_conf_dir.stdout }}/pg_hba.conf"
+    regexp: '^host\s+{{ db_name }}\s+{{ db_user }}'
+    line: "host    {{ db_name }}    {{ db_user }}    {{ apps_subnet_cidr }}    scram-sha-256"
+  notify: restart postgresql
+
+- name: Flush handlers so the database is live before it is used
+  ansible.builtin.meta: flush_handlers
+
+- name: Create the application role
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+    state: present
+  no_log: true
+
+- name: Create the database
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+    owner: "{{ db_user }}"
+    state: present
+
+- name: Create the items table
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: "{{ db_name }}"
+    query: |
+      CREATE TABLE IF NOT EXISTS items (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+  register: table_create
+  changed_when: false
+
+- name: Grant the application role access
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    db: "{{ db_name }}"
+    role: "{{ db_user }}"
+    objs: items
+    privs: SELECT,INSERT,UPDATE,DELETE
+    type: table
+
+- name: Grant sequence access so INSERT can allocate ids
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    db: "{{ db_name }}"
+    role: "{{ db_user }}"
+    objs: items_id_seq
+    privs: USAGE,SELECT
+    type: sequence
+
+- name: Seed a row, only if the table is empty
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: "{{ db_name }}"
+    query: >-
+      INSERT INTO items (name) SELECT 'seeded-by-ansible'
+      WHERE NOT EXISTS (SELECT 1 FROM items)
+  register: seed
+  changed_when: seed.rowcount | default(0) > 0

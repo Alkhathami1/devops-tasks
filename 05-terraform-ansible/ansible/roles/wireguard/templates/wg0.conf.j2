@@ -1,0 +1,23 @@
+# WireGuard server on the bastion.
+#
+# WireGuard is chosen over IPsec or OpenVPN for three reasons that matter here:
+# it is in the mainline kernel so there is no userspace daemon in the data path,
+# the configuration is small enough to audit at a glance, and it is silent to
+# unauthenticated packets - a port scan of UDP 51820 gets no response at all,
+# because a handshake not signed by a known peer key is dropped without reply.
+
+[Interface]
+Address    = {{ wg_server_address }}
+ListenPort = {{ wg_port }}
+PrivateKey = {{ wg_server_priv }}
+
+# Masquerade tunnel traffic onto the bastion's own address, so the private
+# tiers see a source inside the public subnet and need no route back to
+# 10.99.0.0/24.
+PostUp   = iptables -t nat -A POSTROUTING -s {{ wg_server_address | ansible.utils.ipaddr('network/prefix') }} -o ens4 -j MASQUERADE; iptables -A FORWARD -i {{ wg_interface }} -j ACCEPT
+PostDown = iptables -t nat -D POSTROUTING -s {{ wg_server_address | ansible.utils.ipaddr('network/prefix') }} -o ens4 -j MASQUERADE; iptables -D FORWARD -i {{ wg_interface }} -j ACCEPT
+
+[Peer]
+# The operator's laptop.
+PublicKey  = {{ wg_client_pub }}
+AllowedIPs = {{ wg_client_address }}

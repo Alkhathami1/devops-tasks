@@ -1,0 +1,9 @@
+---
+- name: reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: restart app
+  ansible.builtin.systemd:
+    name: task05-app
+    state: restarted

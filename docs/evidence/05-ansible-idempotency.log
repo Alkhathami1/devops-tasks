@@ -1,0 +1,402 @@
+﻿----------------------------------------------------------------
+### Ansible run twice: second run must report zero changed
+COMMAND   : ./scripts/ansible-run.sh --check-idempotent
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-26 17:56:57 +0300
+----------------------------------------------------------------
+############################################################
+# RUN 1 - convergence
+############################################################
+
+PLAY [Baseline every host] *****************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [bastion]
+ok: [nginx]
+ok: [app]
+ok: [db]
+
+TASK [common : Wait for cloud-init to finish] **********************************
+ok: [bastion]
+ok: [app]
+ok: [db]
+ok: [nginx]
+
+TASK [common : Update apt cache] ***********************************************
+ok: [bastion]
+ok: [app]
+ok: [nginx]
+ok: [db]
+
+TASK [common : Install baseline packages] **************************************
+ok: [bastion]
+ok: [db]
+ok: [app]
+ok: [nginx]
+
+TASK [common : Set a descriptive hostname] *************************************
+ok: [bastion]
+ok: [db]
+ok: [nginx]
+ok: [app]
+
+TASK [common : Record the tier in /etc/motd] ***********************************
+ok: [bastion]
+ok: [nginx]
+ok: [app]
+ok: [db]
+
+PLAY [Database tier] ***********************************************************
+
+TASK [db : Install PostgreSQL] *************************************************
+ok: [db]
+
+TASK [db : Ensure PostgreSQL is running] ***************************************
+ok: [db]
+
+TASK [db : Find the PostgreSQL config directory] *******************************
+ok: [db]
+
+TASK [db : Listen on all interfaces] *******************************************
+ok: [db]
+
+TASK [db : Allow the apps subnet, and only the apps subnet] ********************
+ok: [db]
+
+TASK [db : Flush handlers so the database is live before it is used] ***********
+
+TASK [db : Create the application role] ****************************************
+ok: [db]
+
+TASK [db : Create the database] ************************************************
+ok: [db]
+
+TASK [db : Create the items table] *********************************************
+ok: [db]
+
+TASK [db : Grant the application role access] **********************************
+ok: [db]
+
+TASK [db : Grant sequence access so INSERT can allocate ids] *******************
+ok: [db]
+
+TASK [db : Seed a row, only if the table is empty] *****************************
+ok: [db]
+
+PLAY [Application tier] ********************************************************
+
+TASK [app : Install the app runtime] *******************************************
+ok: [app]
+
+TASK [app : Create the service account] ****************************************
+ok: [app]
+
+TASK [app : Deploy the application] ********************************************
+ok: [app]
+
+TASK [app : Deploy the environment file] ***************************************
+ok: [app]
+
+TASK [app : Install the systemd unit] ******************************************
+ok: [app]
+
+TASK [app : Enable and start the app] ******************************************
+ok: [app]
+
+TASK [app : Wait for the app to accept connections] ****************************
+ok: [app]
+
+PLAY [Public tier - reverse proxy] *********************************************
+
+TASK [nginx : Install nginx and openssl] ***************************************
+ok: [nginx]
+
+TASK [nginx : Create the TLS directory] ****************************************
+ok: [nginx]
+
+TASK [nginx : Generate a self-signed certificate] ******************************
+ok: [nginx]
+
+TASK [nginx : Lock down the private key] ***************************************
+ok: [nginx]
+
+TASK [nginx : Deploy the reverse proxy configuration] **************************
+ok: [nginx]
+
+TASK [nginx : Enable the site] *************************************************
+ok: [nginx]
+
+TASK [nginx : Remove the default site] *****************************************
+ok: [nginx]
+
+TASK [nginx : Validate the configuration before reloading] *********************
+ok: [nginx]
+
+TASK [nginx : Ensure nginx is running] *****************************************
+ok: [nginx]
+
+PLAY [Public tier - WireGuard VPN] *********************************************
+
+TASK [wireguard : Install WireGuard] *******************************************
+ok: [bastion]
+
+TASK [wireguard : Ensure the config directory exists] **************************
+ok: [bastion]
+
+TASK [wireguard : Generate the server private key] *****************************
+ok: [bastion]
+
+TASK [wireguard : Derive the server public key] ********************************
+ok: [bastion]
+
+TASK [wireguard : Generate the client private key] *****************************
+ok: [bastion]
+
+TASK [wireguard : Derive the client public key] ********************************
+ok: [bastion]
+
+TASK [wireguard : Read the keys] ***********************************************
+ok: [bastion] => (item=None)
+ok: [bastion] => (item=None)
+ok: [bastion] => (item=None)
+ok: [bastion] => (item=None)
+ok: [bastion]
+
+TASK [wireguard : Register the key material] ***********************************
+ok: [bastion]
+
+TASK [wireguard : Enable IPv4 forwarding] **************************************
+ok: [bastion]
+
+TASK [wireguard : Deploy the server configuration] *****************************
+ok: [bastion]
+
+TASK [wireguard : Deploy the client configuration for the operator] ************
+ok: [bastion]
+
+TASK [wireguard : Enable and start WireGuard] **********************************
+ok: [bastion]
+
+TASK [wireguard : Confirm the interface is up] *********************************
+ok: [bastion]
+
+TASK [wireguard : Report the interface] ****************************************
+ok: [bastion] => {
+    "msg": [
+        "interface: wg0",
+        "  public key: 772i5mdcakzmrZaqegOhtrKpGmEq8lT3MjkuBKauqTs=",
+        "  private key: (hidden)",
+        "  listening port: 51820",
+        "",
+        "peer: l+10MQep0AsEjVBQDepobecq95yV3u2ISKTuenq2RCQ=",
+        "  allowed ips: 10.99.0.2/32"
+    ]
+}
+
+PLAY RECAP *********************************************************************
+app                        : ok=13   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+bastion                    : ok=20   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+db                         : ok=17   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+nginx                      : ok=15   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+
+############################################################
+# RUN 2 - idempotency: every changed= must be 0
+############################################################
+
+PLAY [Baseline every host] *****************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [bastion]
+ok: [app]
+ok: [nginx]
+ok: [db]
+
+TASK [common : Wait for cloud-init to finish] **********************************
+ok: [bastion]
+ok: [nginx]
+ok: [app]
+ok: [db]
+
+TASK [common : Update apt cache] ***********************************************
+ok: [bastion]
+ok: [nginx]
+ok: [app]
+ok: [db]
+
+TASK [common : Install baseline packages] **************************************
+ok: [bastion]
+ok: [nginx]
+ok: [app]
+ok: [db]
+
+TASK [common : Set a descriptive hostname] *************************************
+ok: [bastion]
+ok: [app]
+ok: [nginx]
+ok: [db]
+
+TASK [common : Record the tier in /etc/motd] ***********************************
+ok: [bastion]
+ok: [nginx]
+ok: [app]
+ok: [db]
+
+PLAY [Database tier] ***********************************************************
+
+TASK [db : Install PostgreSQL] *************************************************
+ok: [db]
+
+TASK [db : Ensure PostgreSQL is running] ***************************************
+ok: [db]
+
+TASK [db : Find the PostgreSQL config directory] *******************************
+ok: [db]
+
+TASK [db : Listen on all interfaces] *******************************************
+ok: [db]
+
+TASK [db : Allow the apps subnet, and only the apps subnet] ********************
+ok: [db]
+
+TASK [db : Flush handlers so the database is live before it is used] ***********
+
+TASK [db : Create the application role] ****************************************
+ok: [db]
+
+TASK [db : Create the database] ************************************************
+ok: [db]
+
+TASK [db : Create the items table] *********************************************
+ok: [db]
+
+TASK [db : Grant the application role access] **********************************
+ok: [db]
+
+TASK [db : Grant sequence access so INSERT can allocate ids] *******************
+ok: [db]
+
+TASK [db : Seed a row, only if the table is empty] *****************************
+ok: [db]
+
+PLAY [Application tier] ********************************************************
+
+TASK [app : Install the app runtime] *******************************************
+ok: [app]
+
+TASK [app : Create the service account] ****************************************
+ok: [app]
+
+TASK [app : Deploy the application] ********************************************
+ok: [app]
+
+TASK [app : Deploy the environment file] ***************************************
+ok: [app]
+
+TASK [app : Install the systemd unit] ******************************************
+ok: [app]
+
+TASK [app : Enable and start the app] ******************************************
+ok: [app]
+
+TASK [app : Wait for the app to accept connections] ****************************
+ok: [app]
+
+PLAY [Public tier - reverse proxy] *********************************************
+
+TASK [nginx : Install nginx and openssl] ***************************************
+ok: [nginx]
+
+TASK [nginx : Create the TLS directory] ****************************************
+ok: [nginx]
+
+TASK [nginx : Generate a self-signed certificate] ******************************
+ok: [nginx]
+
+TASK [nginx : Lock down the private key] ***************************************
+ok: [nginx]
+
+TASK [nginx : Deploy the reverse proxy configuration] **************************
+ok: [nginx]
+
+TASK [nginx : Enable the site] *************************************************
+ok: [nginx]
+
+TASK [nginx : Remove the default site] *****************************************
+ok: [nginx]
+
+TASK [nginx : Validate the configuration before reloading] *********************
+ok: [nginx]
+
+TASK [nginx : Ensure nginx is running] *****************************************
+ok: [nginx]
+
+PLAY [Public tier - WireGuard VPN] *********************************************
+
+TASK [wireguard : Install WireGuard] *******************************************
+ok: [bastion]
+
+TASK [wireguard : Ensure the config directory exists] **************************
+ok: [bastion]
+
+TASK [wireguard : Generate the server private key] *****************************
+ok: [bastion]
+
+TASK [wireguard : Derive the server public key] ********************************
+ok: [bastion]
+
+TASK [wireguard : Generate the client private key] *****************************
+ok: [bastion]
+
+TASK [wireguard : Derive the client public key] ********************************
+ok: [bastion]
+
+TASK [wireguard : Read the keys] ***********************************************
+ok: [bastion] => (item=None)
+ok: [bastion] => (item=None)
+ok: [bastion] => (item=None)
+ok: [bastion] => (item=None)
+ok: [bastion]
+
+TASK [wireguard : Register the key material] ***********************************
+ok: [bastion]
+
+TASK [wireguard : Enable IPv4 forwarding] **************************************
+ok: [bastion]
+
+TASK [wireguard : Deploy the server configuration] *****************************
+ok: [bastion]
+
+TASK [wireguard : Deploy the client configuration for the operator] ************
+ok: [bastion]
+
+TASK [wireguard : Enable and start WireGuard] **********************************
+ok: [bastion]
+
+TASK [wireguard : Confirm the interface is up] *********************************
+ok: [bastion]
+
+TASK [wireguard : Report the interface] ****************************************
+ok: [bastion] => {
+    "msg": [
+        "interface: wg0",
+        "  public key: 772i5mdcakzmrZaqegOhtrKpGmEq8lT3MjkuBKauqTs=",
+        "  private key: (hidden)",
+        "  listening port: 51820",
+        "",
+        "peer: l+10MQep0AsEjVBQDepobecq95yV3u2ISKTuenq2RCQ=",
+        "  allowed ips: 10.99.0.2/32"
+    ]
+}
+
+PLAY RECAP *********************************************************************
+app                        : ok=13   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+bastion                    : ok=20   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+db                         : ok=17   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+nginx                      : ok=15   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+=== idempotency verdict ===
+    total changed across all hosts on the second run: 0
+[PASS] idempotent: the second run changed nothing
+EXIT CODE : 0
+

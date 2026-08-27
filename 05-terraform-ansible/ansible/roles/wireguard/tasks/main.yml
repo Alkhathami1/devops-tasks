@@ -1,0 +1,97 @@
+---
+- name: Install WireGuard
+  ansible.builtin.apt:
+    name:
+      - wireguard
+      - wireguard-tools
+    state: present
+
+- name: Ensure the config directory exists
+  ansible.builtin.file:
+    path: "{{ wg_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: Generate the server private key
+  # creates: makes this idempotent. Regenerating the key every run would
+  # invalidate the client config and report a change forever.
+  ansible.builtin.shell: "umask 077 && wg genkey > {{ wg_dir }}/server.key"
+  args:
+    creates: "{{ wg_dir }}/server.key"
+
+- name: Derive the server public key
+  ansible.builtin.shell: "wg pubkey < {{ wg_dir }}/server.key > {{ wg_dir }}/server.pub"
+  args:
+    creates: "{{ wg_dir }}/server.pub"
+
+- name: Generate the client private key
+  ansible.builtin.shell: "umask 077 && wg genkey > {{ wg_dir }}/client.key"
+  args:
+    creates: "{{ wg_dir }}/client.key"
+
+- name: Derive the client public key
+  ansible.builtin.shell: "wg pubkey < {{ wg_dir }}/client.key > {{ wg_dir }}/client.pub"
+  args:
+    creates: "{{ wg_dir }}/client.pub"
+
+- name: Read the keys
+  ansible.builtin.slurp:
+    src: "{{ wg_dir }}/{{ item }}"
+  register: wg_keys
+  loop:
+    - server.key
+    - server.pub
+    - client.key
+    - client.pub
+  no_log: true
+
+- name: Register the key material
+  ansible.builtin.set_fact:
+    wg_server_priv: "{{ (wg_keys.results[0].content | b64decode) | trim }}"
+    wg_server_pub: "{{ (wg_keys.results[1].content | b64decode) | trim }}"
+    wg_client_priv: "{{ (wg_keys.results[2].content | b64decode) | trim }}"
+    wg_client_pub: "{{ (wg_keys.results[3].content | b64decode) | trim }}"
+  no_log: true
+
+- name: Enable IPv4 forwarding
+  # Without this the tunnel comes up and the handshake completes, but nothing
+  # routes past the bastion - which reads as a firewall problem and is not one.
+  # can_ip_forward on the instance is the GCP half; this is the kernel half.
+  # Both are required.
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Deploy the server configuration
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: "{{ wg_dir }}/{{ wg_interface }}.conf"
+    mode: '0600'
+  notify: restart wireguard
+  no_log: true
+
+- name: Deploy the client configuration for the operator
+  ansible.builtin.template:
+    src: client.conf.j2
+    dest: "{{ wg_dir }}/client-{{ wg_interface }}.conf"
+    mode: '0600'
+  no_log: true
+
+- name: Enable and start WireGuard
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ wg_interface }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Confirm the interface is up
+  ansible.builtin.command: "wg show {{ wg_interface }}"
+  register: wg_status
+  changed_when: false
+
+- name: Report the interface
+  ansible.builtin.debug:
+    msg: "{{ wg_status.stdout_lines }}"

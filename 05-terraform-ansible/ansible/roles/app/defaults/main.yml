@@ -1,0 +1,5 @@
+---
+app_port: 8080
+db_name: appdb
+db_user: appuser
+db_password: "{{ 'task05-' + ('db' + db_name) | hash('sha256') | truncate(20, true, '') }}"

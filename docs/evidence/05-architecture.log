@@ -1,0 +1,134 @@
+﻿----------------------------------------------------------------
+### Architecture proven by measurement: tiering, peering non-transitivity, VPN, no public IPs
+COMMAND   : ./scripts/verify.sh
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-26 18:04:51 +0300
+----------------------------------------------------------------
+================================================================
+Task 05 — architecture verified by measurement
+timestamp : 2026-08-26T15:04:53Z
+================================================================
+
+  bastion (public) : 34.61.201.209
+  nginx   (public) : 136.113.192.221 / 10.10.1.2
+  app     (apps)   : 10.20.1.2        no public address
+  db      (dbs)    : 10.30.1.2        no public address
+
+=== 1. The happy path: internet -> nginx -> app -> database ===
+
+    HTTPS through the public entry point (-k: self-signed cert):
+      {"served_by": "app", "db_host": "10.30.1.2", "count": 6, "items": [{"id": 1, "name": "seeded-by-ansible", "created_at": "2026-08-26 14:38:14.407714+00:00"}, {"id": 2, "name": "verify-144258", "created_at": "2026-08-26 14:42:59.288972+00:00"}, {"id": 3, "name": "verify-144515", "created_at": "2026-08-26 14:45:15.851232+00:00"}, {"id": 4, "name": "verify-144750", "created_at": "2026-08-26 14:47:51.2
+[PASS] an HTTP request through nginx returned DB-backed data
+[PASS] the row Ansible seeded in PostgreSQL is visible through the proxy
+
+    a WRITE through the proxy, then read back (app reads AND writes the DB):
+      POST -> {"id": 7, "name": "verify-150454", "created_at": "2026-08-26 15:04:55.696963+00:00"}
+
+[PASS] the written row is returned by a subsequent read - the app tier reads and writes the DB
+
+    nginx's own health, distinct from the app's:
+      {"status":"ok","service":"nginx","tier":"public"}
+
+=== 2. The private tiers are NOT reachable from the internet ===
+
+    These addresses are RFC1918 and have no public NIC at all, so the
+    attempt cannot even leave this machine correctly. That is the point:
+    there is no address to attack.
+       direct to app 10.20.1.2:8080 -> curl exit 28 (7=refused, 28=timeout)
+[PASS] app tier unreachable directly from the internet
+       direct to db 10.30.1.2:5432 -> curl exit 28 (7=refused, 28=timeout)
+[PASS] db tier unreachable directly from the internet
+
+    and SSH to the private tiers from here is equally impossible:
+       nc app 10.20.1.2:22 from an unprivileged container -> exit=1
+[PASS] app:22 not reachable from outside the VPC
+       nc db 10.30.1.2:22 from an unprivileged container -> exit=1
+[PASS] db:22 not reachable from outside the VPC
+
+=== 3. The database accepts the app tier and nothing else ===
+
+    from the APP tier (permitted: apps subnet -> dbs:5432):
+       app -> db:5432 : REACHABLE
+[PASS] the app tier can reach PostgreSQL
+
+    from the PUBLIC tier (nginx). This is the peering non-transitivity
+    test: public peers with apps, apps peers with dbs, and yet there is
+    NO route from public to dbs. Not a firewall rule - no route exists.
+       nginx -> db:5432 : BLOCKED
+[PASS] the public tier CANNOT reach the database - peering is non-transitive
+
+    the same from the bastion, which is also in the public tier:
+       bastion -> db:5432 : BLOCKED
+[PASS] the bastion cannot reach the database either
+
+    control: the public tier CAN reach the app tier, so the failure above
+    is specific to the dbs VPC and not a broken host:
+       nginx -> app:8080 : REACHABLE
+[PASS] public -> apps works, so the public->dbs failure is the peering topology
+
+=== 4. Routing tables: the absence of a route, from GCP itself ===
+
+    Routes in the PUBLIC VPC (note: no 10.30.0.0/16 destination):
+      NAME                              DEST_RANGE    NEXT_HOP_PEERING
+      default-route-769dccd0e2bd569f    0.0.0.0/0
+      default-route-r-a01b896900b9fcbd  10.10.1.0/24
+      peering-route-ca82d332a0ab7421    10.20.1.0/24  task05-public-to-apps
+
+[PASS] no route to 10.30.0.0/16 exists in the public VPC - the packet has nowhere to go
+[PASS] a route to 10.20.0.0/16 (apps) does exist, via the peering
+
+=== 5. WireGuard VPN ===
+
+      interface: wg0
+        public key: 772i5mdcakzmrZaqegOhtrKpGmEq8lT3MjkuBKauqTs=
+        private key: (hidden)
+        listening port: 51820
+      
+      peer: l+10MQep0AsEjVBQDepobecq95yV3u2ISKTuenq2RCQ=
+        allowed ips: 10.99.0.2/32
+
+[PASS] the WireGuard interface is up on the bastion
+[PASS] a peer is configured
+       net.ipv4.ip_forward = 1
+[PASS] IP forwarding is on - without it the tunnel establishes but nothing routes
+
+    UDP 51820 is open to the internet but answers nothing unsigned:
+       unauthenticated UDP probe -> exit=0
+       WireGuard drops any handshake not signed by a known peer key, silently.
+
+    the client configuration the operator would import:
+      # WireGuard client configuration. Copy to the operator's machine.
+      #
+      # AllowedIPs lists ONLY the tiers this tunnel can actually reach. The database
+      # range (10.30.0.0/16) is deliberately absent: the bastion has no route to it,
+      # because the public and dbs VPCs are not peered. Advertising it would send the
+      # client's packets into a blackhole rather than to the database - the tunnel
+      # would look up while that destination silently failed.
+      #
+      # Administering the database goes through the app tier instead:
+      #   ssh -J ansible@<bastion>,ansible@<app> ansible@<db>
+      
+      [Interface]
+      Address    = 10.99.0.2/32
+      PrivateKey = <REDACTED>
+      
+      [Peer]
+      PublicKey  = 772i5mdcakzmrZaqegOhtrKpGmEq8lT3MjkuBKauqTs=
+      Endpoint   = 34.61.201.209:51820
+      AllowedIPs = 10.10.0.0/16, 10.20.0.0/16, 10.99.0.0/24
+      PersistentKeepalive = 25
+
+=== 6. No public addresses on the private tiers, from GCP ===
+      NAME            NETWORK            NETWORK_IP  NAT_IP
+      task05-app      task05-apps-vpc    10.20.1.2
+      task05-bastion  task05-public-vpc  10.10.1.3   34.61.201.209
+      task05-db       task05-dbs-vpc     10.30.1.2
+      task05-nginx    task05-public-vpc  10.10.1.2   136.113.192.221
+       instances with a public address: 2 of 4
+[PASS] only the two public-tier hosts have public addresses
+
+================================================================
+RESULT: ARCHITECTURE VERIFIED
+================================================================
+EXIT CODE : 0
+

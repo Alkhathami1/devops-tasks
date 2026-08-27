@@ -1,0 +1,26 @@
+﻿----------------------------------------------------------------
+### Post-destroy verification against GCP listings, per resource class
+COMMAND   : bash scripts/orphan-check.sh
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-26 23:43:42 +0300
+----------------------------------------------------------------
+=== Post-destroy orphan check: project test-environment-506521 ===
+
+Classes that survive instance deletion:
+  [CLEAN]   static addresses       none
+  [CLEAN]   persistent disks       none
+  [CLEAN]   Cloud NAT              none
+  [CLEAN]   snapshots              none
+  [CLEAN]   custom images          none
+
+Classes tied to the stack, which should also be gone:
+  [CLEAN]   instances              none
+  [CLEAN]   task05 networks        none
+  [CLEAN]   task05 firewalls       none
+  [CLEAN]   task05 svc accts       none
+
+================================================================
+RESULT: PROJECT CLEAN - nothing left behind, nothing left running
+================================================================
+EXIT CODE : 0
+
