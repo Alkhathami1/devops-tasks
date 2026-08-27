@@ -2,10 +2,10 @@
 ### REPORT.pdf font, size, pagination, margins and length verified by extraction
 COMMAND   : python scripts/verify-pdf.py REPORT.pdf
 CWD       : /c/Users/abual/devops-tasks
-TIMESTAMP : 2026-08-27 23:01:15 +0300
+TIMESTAMP : 2026-08-27 23:37:40 +0300
 ----------------------------------------------------------------
 file       : REPORT.pdf
-pages      : 20
+pages      : 20   (physical pages, cover included)
 page size  : 595.3 x 841.9 pt (210 x 297 mm)
 
 --- 1. fonts, read out of the PDF ---
@@ -19,7 +19,7 @@ page size  : 595.3 x 841.9 pt (210 x 297 mm)
 [PASS] every font used is embedded in the file
 
 --- 2. type sizes actually used ---
-     11.0 pt  Arial                    20142 chars
+     11.0 pt  Arial                    20654 chars
       8.5 pt  Arial                     8979 chars
      11.0 pt  ArialBold                 2918 chars
      10.0 pt  Arial                     2827 chars
@@ -33,7 +33,7 @@ page size  : 595.3 x 841.9 pt (210 x 297 mm)
 [PASS] monospace used for 1233 characters of terminal output
 
 --- 3. page numbers ---
-[PASS] every page after the cover carries a number (19 pages)
+[PASS] every page after the cover carries a number (19 numbered folios, 20 physical pages)
 
 --- 4. nothing crosses the margins ---
 [PASS] no text crosses the left, right or bottom margin
@@ -43,7 +43,7 @@ page size  : 595.3 x 841.9 pt (210 x 297 mm)
 [PASS] all 28 contents entries point at the page carrying that heading
 
 --- 6. length and metadata ---
-[PASS] 20 pages, within the 20-page limit
+[PASS] 20 physical pages (19 numbered + cover), within the 20-page limit
     title     : 'Infrastructure Engineer Assignment'
 [PASS] title is set
     author    : 'Ali Alkhathami'

@@ -11,8 +11,11 @@ command, the timestamp and the full output, and pipes the result through
 `scripts/redact.sh` so redaction is part of the capture path rather than a step
 someone remembers.
 
-Review runs under seven written briefs in `.claude/agents/`. Each reviewer is an
-automated role with a written brief; the names are names.
+Review runs as seven scripted review roles under written briefs in
+`.claude/agents/`, each judging work it did not author. The separation is of
+duties, not of judgement: these are automated roles sharing one model family,
+not independent parties, and the value is that none of them wrote what it
+checks. The names are names.
 
 | | | |
 |---|---|---|
@@ -52,6 +55,12 @@ Six practices carried most of the weight:
 
 Anything irreversible — creating cloud resources, publishing, rewriting history
 — passes through a human decision gate before it happens.
+
+Body text is Arial 11, as the brief asks for it by name, embedded rather than
+substituted with a metric clone. Terminal output is set in a monospace face,
+because column-aligned output is unreadable in a proportional one — a deliberate
+departure from the single-font instruction, named here rather than left for a
+reader to notice.
 
 The briefs in `.claude/agents/` are written to be read on their own, and stand
 as the methodology in full.

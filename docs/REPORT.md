@@ -487,8 +487,11 @@ anything was written about it. Every figure here comes from a log in
 `docs/evidence/`, written by a wrapper that records the command, the timestamp
 and the full output, and redacts on the way in.
 
-Review runs under seven written briefs in `.claude/agents/`. Each reviewer is an
-automated role with a written brief; the names are names.
+Review runs as seven scripted review roles under written briefs in
+`.claude/agents/`, each judging work it did not author. The separation is of
+duties, not of judgement: these are automated roles sharing one model family,
+not independent parties, and the value is that none of them wrote what it
+checks. The names are names.
 
 | | | |
 |---|---|---|
@@ -503,6 +506,12 @@ automated role with a written brief; the names are names.
 The tool scopes are part of the design: Rawi has no shell, so every number it
 publishes comes from a log something else produced. The briefs are written to be
 read on their own, and `docs/METHOD.md` describes the practices they enforce.
+
+Body text is Arial 11, as the brief asks for it by name, embedded rather than
+substituted with a metric clone. Terminal output is set in a monospace face,
+because column-aligned output is unreadable in a proportional one — a deliberate
+departure from the single-font instruction, named here rather than left for a
+reader to notice.
 
 ---
 

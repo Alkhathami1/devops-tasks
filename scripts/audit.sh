@@ -490,10 +490,13 @@ PDFLOG="$EV_DIR/07-pdf-verification.log"
 if [ -f "$PDFLOG" ]; then
   if grep -q "RESULT: PDF VERIFIED" "$PDFLOG"; then
     PDFPAGES="$(grep -oE '^pages[[:space:]]*:[[:space:]]*[0-9]+' "$PDFLOG" | grep -oE '[0-9]+' | head -1)"
+    # PDFPAGES is the physical count the verifier prints, cover included. The
+    # folios printed on the pages run to one fewer, and stating which is which
+    # is the point of naming it here rather than leaving two numbers loose.
     if [ "${PDFPAGES:-999}" -le 20 ]; then
-      pass "PDF verification recorded a pass (${PDFPAGES:-?} pages, within the 20-page limit)"
+      pass "PDF verification recorded a pass (${PDFPAGES:-?} physical pages, $(( ${PDFPAGES:-1} - 1 )) numbered + cover, within the 20-page limit)"
     else
-      fail "PDF is ${PDFPAGES} pages, over the 20-page limit"
+      fail "PDF is ${PDFPAGES} physical pages, over the 20-page limit"
     fi
   else
     fail "07-pdf-verification.log exists but does not record RESULT: PDF VERIFIED"

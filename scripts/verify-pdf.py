@@ -44,7 +44,7 @@ def bad(msg):
 
 doc = pymupdf.open(PDF)
 print(f"file       : {PDF}")
-print(f"pages      : {doc.page_count}")
+print(f"pages      : {doc.page_count}   (physical pages, cover included)")
 print(f"page size  : {doc[0].rect.width:.1f} x {doc[0].rect.height:.1f} pt "
       f"({doc[0].rect.width/72*25.4:.0f} x {doc[0].rect.height/72*25.4:.0f} mm)")
 print()
@@ -120,7 +120,8 @@ for i, page in enumerate(doc):
 if missing:
     bad(f"pages with no number in the footer: {missing[:12]}")
 else:
-    ok(f"every page after the cover carries a number ({doc.page_count - 1} pages)")
+    ok(f"every page after the cover carries a number "
+       f"({doc.page_count - 1} numbered folios, {doc.page_count} physical pages)")
 
 # --------------------------------------------------------- 5. overflow
 print("\n--- 4. nothing crosses the margins ---")
@@ -179,9 +180,11 @@ else:
 print('\n--- 6. length and metadata ---')
 PAGE_CAP = 20
 if doc.page_count <= PAGE_CAP:
-    ok(f"{doc.page_count} pages, within the {PAGE_CAP}-page limit")
+    ok(f"{doc.page_count} physical pages ({doc.page_count - 1} numbered + cover), "
+       f"within the {PAGE_CAP}-page limit")
 else:
-    bad(f"{doc.page_count} pages, over the {PAGE_CAP}-page limit")
+    bad(f"{doc.page_count} physical pages ({doc.page_count - 1} numbered + cover), "
+        f"over the {PAGE_CAP}-page limit")
 
 md = doc.metadata or {}
 for k in ("title", "author"):

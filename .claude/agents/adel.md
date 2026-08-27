@@ -34,8 +34,8 @@ each is a computation, and each should be performed.
 
 ### 3. Verdict reconciliation
 
-For each verdict line, read the output above it and decide independently
-whether that output supports the verdict. Report disagreements in both
+For each verdict line, read the output above it and decide from that output
+alone whether it supports the verdict. Report disagreements in both
 directions:
 
 - **A pass the output does not support** — the output is empty, is an error

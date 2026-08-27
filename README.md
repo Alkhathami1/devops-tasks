@@ -2,7 +2,8 @@
 
 Six infrastructure tasks, each built and then run against a real runtime.
 
-**Start with [`REPORT.pdf`](REPORT.pdf)** — 20 pages, about 20 minutes. Also
+**Start with [`REPORT.pdf`](REPORT.pdf)** — 20 pages (19 numbered folios plus
+an unnumbered cover), about 20 minutes. Also
 available as [`REPORT.docx`](REPORT.docx).
 
 **Depth per task** lives in that task's `WALKTHROUGH.md`: the full reasoning,
