@@ -1,0 +1,86 @@
+﻿----------------------------------------------------------------
+### HEVC 1080p60 12 Mbps encode, measured with ffprobe
+COMMAND   : ./scripts/encode.sh
+CWD       : /c/Users/abual/devops-tasks/06-streaming
+TIMESTAMP : 2026-08-26 19:11:56 +0300
+----------------------------------------------------------------
+================================================================
+Phase 1 — local HEVC encoding, measured
+ffmpeg: ffmpeg version 8.0.1-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
+================================================================
+
+=== 1. Reference source ===
+    testsrc2 has moving detail and colour transitions, so it actually
+    exercises the encoder. A static pattern would compress to nothing and
+    make any bitrate target trivially achievable.
+       source: 64M lossless FFV1 + PCM, 10s 1920x1080@60
+
+=== 2. HEVC encode at the required parameters ===
+
+    Encoder settings and why each one:
+      -c:v libx265         HEVC. The requirement names the codec.
+      -b:v 12M             target. CBR-ish via bufsize/maxrate below, because a
+                           contribution feed into MediaLive wants predictable
+                           bitrate, not VBR peaks that overrun the uplink.
+      -maxrate 12M
+      -bufsize 24M         VBV buffer = 2x bitrate = 2 seconds. Smaller starves
+                           complex scenes; larger lets the instantaneous rate
+                           drift further above the link budget.
+      -x265-params
+        keyint=120         2s GOP at 60fps. MediaLive segments the ARCHIVE
+        min-keyint=120     output on IDR boundaries, so the GOP length sets the
+                           minimum segment granularity. Fixed (min=max) so
+                           segments are even.
+        scenecut=0         no adaptive keyframes: a scene-cut IDR mid-GOP
+                           produces uneven segments downstream.
+        bframes=3          B-frames help compression. Live sub-second latency
+                           would use 0; this is contribution, not interactive.
+        aq-mode=2          variance adaptive quantisation, better on flat areas
+      -pix_fmt yuv420p     8-bit 4:2:0. Main profile - the widest decode support
+                           and what MediaLive's HEVC encoder expects.
+      -preset medium       speed/quality balance. slower would gain a little
+                           quality per bit at several times the encode time.
+      -c:a aac -b:a 192k   the audio requirement floor.
+      -f mpegts            MPEG-TS container.
+
+
+real	0m16.360s
+user	0m0.000s
+sys	0m0.015s
+
+=== 3. MEASURED against the requirements ===
+
+    ffprobe on the produced file:
+      Input #0, mpegts, from 'C:/Users/abual/devops-tasks/06-streaming/out/hevc_1080p60_12m.ts':
+        Duration: 00:00:10.02, start: 1.412000, bitrate: 12652 kb/s
+        Stream #0:0[0x100]: Video: hevc (Main) (HEVC / 0x43564548), yuv420p(tv), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 90k tbn, start 1.433333
+        Stream #0:1[0x101]: Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 194 kb/s, start 1.412000
+
+      video codec              hevc
+      resolution               1920x1080
+      frame rate               60/1
+      container                mpegts
+      audio codec              aac
+      audio bitrate            194205 bps
+      file size                15849152 bytes
+      duration                 10.021333 s
+      MEASURED total bitrate   12652330 bps  (from size/duration, includes TS overhead)
+      implied video bitrate    12458125 bps  (total minus audio)
+
+[PASS] codec is HEVC
+[PASS] resolution 1920x1080 meets the Full HD floor
+[PASS] measured total bitrate 12652330 bps meets the 12 Mbps floor
+[PASS] audio 194205 bps meets the 192 kbps floor
+[PASS] container is MPEG-TS
+
+=== 4. GOP / keyframe interval, measured ===
+    Counting actual I-frames rather than trusting keyint:
+       keyframes: 5   total frames: 600
+       average GOP: 120.0 frames = 2.00s at 60 fps
+[PASS] keyframe interval measured at 2.00s (target 2s)
+
+================================================================
+RESULT: HEVC ENCODE MEETS ALL REQUIREMENTS
+================================================================
+EXIT CODE : 0
+

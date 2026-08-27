@@ -1,0 +1,41 @@
+﻿----------------------------------------------------------------
+### terraform fmt, validate and plan for MediaLive - clean, nothing created
+COMMAND   : bash -c cd terraform && unset MSYS_NO_PATHCONV && terraform fmt -check -recursive && echo "fmt clean" && terraform validate -no-color && terraform plan -input=false -no-color -out=tfplan.binary 2>&1 | tail -30
+CWD       : /c/Users/abual/devops-tasks/06-streaming
+TIMESTAMP : 2026-08-26 19:47:01 +0300
+----------------------------------------------------------------
+fmt clean
+Success! The configuration is valid.
+
+        }
+    }
+
+  # random_id.suffix will be created
+  + resource "random_id" "suffix" {
+      + b64_std     = (known after apply)
+      + b64_url     = (known after apply)
+      + byte_length = 4
+      + dec         = (known after apply)
+      + hex         = (known after apply)
+      + id          = (known after apply)
+    }
+
+Plan: 10 to add, 0 to change, 0 to destroy.
+
+Changes to Outputs:
+  + archive_bucket     = (known after apply)
+  + archive_prefix     = "live"
+  + channel_id         = (known after apply)
+  + channel_name       = "task06-channel"
+  + input_destinations = []
+  + input_id           = (known after apply)
+  + region             = "eu-central-1"
+
+─────────────────────────────────────────────────────────────────────────────
+
+Saved the plan to: tfplan.binary
+
+To perform exactly these actions, run the following command to apply:
+    terraform apply "tfplan.binary"
+EXIT CODE : 0
+

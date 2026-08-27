@@ -1,0 +1,224 @@
+﻿----------------------------------------------------------------
+### BPP table, HEVC vs H.264 by VMAF at two bitrates, MXF vs TS, RTMP/HEVC tested
+COMMAND   : ./scripts/analysis.sh
+CWD       : /c/Users/abual/devops-tasks/06-streaming
+TIMESTAMP : 2026-08-26 19:12:26 +0300
+----------------------------------------------------------------
+================================================================
+=== 1. Bits per pixel — computed, not asserted ===
+================================================================
+
+    BPP = bitrate / (width x height x frames_per_second)
+
+    It normalises bitrate against how much picture is being produced per
+    second, which is the only way to compare a 1080p60 target with a 4K30 one.
+    Two streams at the same Mbps can be wildly different in quality per pixel.
+
+    Worked, for the required 1080p60 at 12 Mbps:
+
+      12,000,000 / (1920 x 1080 x 60)
+        = 12,000,000 / 124,416,000
+        = 0.0965 bpp
+
+    resolution   fps        bitrate        bpp        verdict
+    ----------   ---        -------        ---        -------
+    1920x1080    30         6 Mbps         0.0965     in range
+    1920x1080    30         8 Mbps         0.1286     in range
+    1920x1080    30         12 Mbps        0.1929     wasteful - diminishing returns
+    1920x1080    30         20 Mbps        0.3215     wasteful - diminishing returns
+    1920x1080    30         35 Mbps        0.5626     wasteful - diminishing returns
+    1920x1080    30         50 Mbps        0.8038     wasteful - diminishing returns
+    1920x1080    60         6 Mbps         0.0482     too low - visible artefacts
+    1920x1080    60         8 Mbps         0.0643     in range
+    1920x1080    60         12 Mbps        0.0965     in range   <== THE REQUIREMENT
+    1920x1080    60         20 Mbps        0.1608     wasteful - diminishing returns
+    1920x1080    60         35 Mbps        0.2813     wasteful - diminishing returns
+    1920x1080    60         50 Mbps        0.4019     wasteful - diminishing returns
+    3840x2160    30         6 Mbps         0.0241     too low - visible artefacts
+    3840x2160    30         8 Mbps         0.0322     too low - visible artefacts
+    3840x2160    30         12 Mbps        0.0482     too low - visible artefacts
+    3840x2160    30         20 Mbps        0.0804     in range
+    3840x2160    30         35 Mbps        0.1407     in range
+    3840x2160    30         50 Mbps        0.2009     wasteful - diminishing returns
+    3840x2160    60         6 Mbps         0.0121     too low - visible artefacts
+    3840x2160    60         8 Mbps         0.0161     too low - visible artefacts
+    3840x2160    60         12 Mbps        0.0241     too low - visible artefacts
+    3840x2160    60         20 Mbps        0.0402     too low - visible artefacts
+    3840x2160    60         35 Mbps        0.0703     in range
+    3840x2160    60         50 Mbps        0.1005     in range
+
+    The sane band for live HEVC is roughly 0.05 - 0.15 bpp:
+
+      below ~0.05   blocking and mosquito noise on motion; the encoder runs
+                    out of bits before it runs out of detail
+      0.05 - 0.15   the working range for contribution and high-quality
+                    distribution
+      above ~0.15   diminishing returns. HEVC's efficiency means the extra
+                    bits buy progressively less visible improvement, and the
+                    uplink cost is linear
+
+    12 Mbps at 1080p60 = 0.0965 bpp sits almost exactly mid-band. It is a
+    defensible number rather than a round one, and it satisfies the stated
+    >= 12 Mbps requirement without overshooting into waste.
+
+    Note the asymmetry the table exposes: 12 Mbps at 4K60 is 0.0241 bpp, a
+    QUARTER of the 1080p60 value and far below anything usable. The same
+    "12 Mbps" is generous at one resolution and unusable at another, which is
+    exactly why the requirement needs a BPP justification attached.
+
+================================================================
+=== 2. HEVC vs H.264, measured with VMAF ===
+================================================================
+
+    Same source, same bitrate, same preset. VMAF scores perceptual
+    quality 0-100 against the reference; ~6 points is roughly the
+    threshold of noticeable difference.
+
+       computing VMAF for HEVC...
+       computing VMAF for H.264...
+
+    codec        file size      VMAF           notes
+    -----        ---------      ----           -----
+    HEVC         15849152 bytes 74.686293      libx265, 12 Mbps
+    H.264        16621456 bytes 75.093992      libx264, 12 Mbps
+
+       VMAF delta (HEVC - H.264) at matched bitrate: -0.41
+[PASS] both codecs scored against a common reference
+
+    The delta above is small and may even favour H.264. That is a real
+    result, not a broken test - see the note. HEVC advantage shows at
+    LOW bitrate, where the bit budget is the binding constraint, so the
+    same comparison is repeated at 3 Mbps:
+
+    codec        bitrate        VMAF           notes
+    -----        -------        ----           -----
+    HEVC         3 Mbps         69.975861      0.0241 bpp - below the sane band
+    H.264        3 Mbps         69.023453      same
+
+       VMAF delta at 3 Mbps (HEVC - H.264): 0.95
+
+    Reading these honestly:
+
+    At 12 Mbps the two codecs are within half a VMAF point, and HEVC may even
+    score marginally lower. That is NOT the textbook 40-50% efficiency claim,
+    and reporting the textbook figure here would have been reporting something
+    that did not happen. Two reasons it comes out this way:
+
+      1. 0.0965 bpp at 1080p60 is a generous budget for this content. Both
+         encoders are near their quality ceiling, so neither is bit-starved and
+         there is little for HEVC's better tools to win back.
+      2. testsrc2 is synthetic: hard geometric edges, flat colour fields and
+         deterministic motion. Real camera content has film grain, complex
+         motion and shallow depth of field, which is where HEVC's larger
+         transform blocks and better intra prediction actually pay.
+
+    A delta under ~6 VMAF points is below the threshold of noticeable
+    difference in any case, so at this bitrate the honest conclusion is that
+    both codecs are visually equivalent on this source.
+
+    HEVC is still the right choice for the requirement, but for reasons the
+    quality numbers do not capture: it is what the assignment specifies, it
+    halves the bitrate needed at 4K where the bit budget IS binding, and its
+    efficiency advantage grows as bpp falls - which is what the 3 Mbps row
+    above is there to show.
+
+================================================================
+=== 3. Container: MPEG-TS vs MXF ===
+================================================================
+
+       producing the same encode in MXF for comparison...
+       MXF rejected the HEVC stream. The muxer said:
+         [mxf @ 00000134f2584b00] track 0: could not find essence container ul, codec not currently supported in container
+         [out#0/mxf @ 00000134f1b2eb80] Could not write header (incorrect codec parameters ?): Operation not permitted
+       falling back to MPEG-2 in MXF, which is what MXF OP1a normally carries:
+       MXF written with MPEG-2 + PCM
+
+    hevc_1080p60_12m.ts:
+      Input #0, mpegts, from 'C:/Users/abual/devops-tasks/06-streaming/out/hevc_1080p60_12m.ts':
+        Duration: 00:00:10.02, start: 1.412000, bitrate: 12652 kb/s
+        Stream #0:0[0x100]: Video: hevc (Main) (HEVC / 0x43564548), yuv420p(tv), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 90k tbn, start 1.433333
+        Stream #0:1[0x101]: Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 194 kb/s, start 1.412000
+
+    hevc_1080p60_12m.mxf:
+      Input #0, mxf, from 'C:/Users/abual/devops-tasks/06-streaming/out/hevc_1080p60_12m.mxf':
+        Duration: 00:00:03.00, start: 0.000000, bitrate: 13597 kb/s
+        Stream #0:0: Video: mpeg2video (Main), yuv420p(tv, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 60 tbn
+        Stream #0:1: Audio: pcm_s16le, 48000 Hz, 1 channels, s16, 768 kb/s
+
+    Choice for the archive: MPEG-TS (.ts)
+
+      segmentable      TS is a stream of 188-byte packets with periodic PAT/PMT
+                       and IDR boundaries, so it can be cut at any GOP without
+                       rewriting an index. MediaLive's ARCHIVE output group
+                       writes .ts segments precisely because of this.
+      error resilient  each packet is independently framed and carries its own
+                       PID. A corrupted region costs those packets; the
+                       decoder resynchronises at the next PAT. An MXF file
+                       with a damaged index or header can be unreadable in
+                       whole.
+      HEVC support     TS carries HEVC natively (stream type 0x24). MXF's
+                       common OP1a mappings are built around MPEG-2, DV, and
+                       JPEG2000; HEVC in MXF exists but is far less
+                       interoperable, as the mux attempt above shows.
+      live-native      TS was designed for broadcast transport - open-ended,
+                       no header rewrite on close. MXF is a file format: it
+                       wants a complete index, which is awkward for a stream
+                       that may be cut off mid-write.
+
+    MXF's advantages are real but belong to a different job: it carries rich
+    per-frame metadata and timecode, and it is the interchange format post
+    houses expect. For an archive written continuously by a live encoder and
+    possibly truncated by a channel stop, TS is the safer choice.
+
+================================================================
+=== 4. Can RTMP carry HEVC? Tested rather than assumed ===
+================================================================
+
+    The widely-repeated claim is that RTMP cannot carry HEVC. Rather
+    than cite it, the mux is attempted and the result reported either
+    way - including if it contradicts the expectation.
+
+    Attempting: ffmpeg -f flv (the RTMP container) with an HEVC stream
+
+    RESULT: the mux SUCCEEDED. That contradicts the common blanket
+    claim that RTMP cannot carry HEVC, and the honest answer is more
+    specific - see the note below.
+        Stream #0:0: Video: hevc (Main), yuv420p(tv), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 1k tbn, start 0.033000
+        Stream #0:1: Audio: aac (LC), 48000 Hz, stereo, fltp, 194 kb/s, start 0.012000
+       This ffmpeg implements ENHANCED RTMP, which adds HEVC to FLV via a
+       FourCC extension. The limitation is therefore in the RECEIVER, not
+       in the container format as such.
+
+    For contrast, the same container accepts H.264:
+[PASS] RTMP/FLV accepted H.264 - the baseline every RTMP receiver supports
+        Stream #0:0: Video: h264 (High), yuv420p(progressive), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 1k tbn, start 0.033000
+        Stream #0:1: Audio: aac (LC), 48000 Hz, stereo, fltp, 194 kb/s, start 0.012000
+
+    What this actually shows, stated against the measurement rather than the
+    folklore:
+
+    Classic RTMP/FLV has a 4-bit CodecID field with assigned values for
+    Sorenson H.263, VP6, H.264 (7) and a few others. There is no value for
+    HEVC - Adobe stopped developing the spec in 2012, before HEVC deployment
+    mattered. That is where "RTMP cannot carry HEVC" comes from.
+
+    But ENHANCED RTMP (2023) adds HEVC, AV1 and VP9 through a FourCC
+    extension, and modern ffmpeg implements it - which is why the mux above
+    SUCCEEDED rather than failing as predicted. Repeating the blanket claim
+    would have been simply wrong on this build.
+
+    The constraint that actually governs the design is on the RECEIVER: AWS
+    MediaLive's RTMP_PUSH input expects H.264 and does not accept an
+    Enhanced-RTMP HEVC feed. Producing a file ffmpeg is happy to mux proves
+    nothing about what MediaLive will ingest.
+
+    So the Terraform uses an SRT/RTP input for the HEVC contribution feed,
+    and the justification is "the receiver does not support it" - verifiable
+    against the MediaLive API - NOT "the container cannot represent it",
+    which this test just disproved locally.
+
+================================================================
+RESULT: ANALYSIS COMPLETE
+================================================================
+EXIT CODE : 0
+

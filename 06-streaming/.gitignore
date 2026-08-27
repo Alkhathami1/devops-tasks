@@ -1,0 +1,6 @@
+# Encoded media is large and regenerable from scripts/encode.sh.
+out/
+*.ts
+*.mxf
+*.mkv
+*.mp4
