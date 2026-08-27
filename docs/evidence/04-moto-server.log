@@ -1,0 +1,9 @@
+﻿----------------------------------------------------------------
+### moto S3-compatible server container
+COMMAND   : docker ps --filter name=moto --format {{.Names}} | {{.Image}} | {{.Status}} | {{.Ports}}
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:34:22 +0300
+----------------------------------------------------------------
+moto | motoserver/moto | Up 16 hours | 0.0.0.0:5000->5000/tcp, [::]:5000->5000/tcp
+EXIT CODE : 0
+

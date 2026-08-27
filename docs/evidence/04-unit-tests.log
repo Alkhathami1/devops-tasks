@@ -1,0 +1,35 @@
+﻿----------------------------------------------------------------
+### Planner unit tests (node --test test/*.test.js)
+COMMAND   : node --test test/planner.test.js
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:34:23 +0300
+----------------------------------------------------------------
+✔ exact range coverage with no gaps or overlaps (uneven size) (1.5365ms)
+✔ even division leaves no remainder tail (0.2204ms)
+✔ remainder tail is a short final part (0.1899ms)
+✔ part size is capped at the 5 GiB S3 maximum (0.5809ms)
+✔ a part size below the 5 MiB floor is lifted to the floor (0.2476ms)
+✔ 1 TB at the maximum part size stays well inside the part ceiling (1.5221ms)
+✔ 1 TB at 5 MiB auto-raises the part size to stay under 10000 parts (23.7745ms)
+✔ 5 TiB maximum object is copyable at the default part size (2.7027ms)
+✔ 5 TiB at 5 MiB still resolves by auto-raising (14.8736ms)
+✔ an object larger than 5 TiB is rejected (0.4275ms)
+✔ a zero-byte object is rejected (0.2257ms)
+✔ non-integer sizes are rejected (0.2814ms)
+✔ a single-byte object produces exactly one part (0.1232ms)
+✔ an object exactly one part long produces one part (0.0947ms)
+✔ CopySource percent-encodes the key but preserves slashes (0.2483ms)
+✔ backoff grows exponentially and stays within the ceiling (0.1937ms)
+✔ runBounded honours the concurrency ceiling and preserves order (51.4242ms)
+✔ withRetry retries retryable errors and gives up on permanent ones (14.4013ms)
+✔ logger emits one JSON line per event carrying the correlationId (1.7748ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 214.6776
+EXIT CODE : 0
+

@@ -1,0 +1,30 @@
+﻿----------------------------------------------------------------
+### Structured JSON log stream - successful multipart copy (5 parts)
+COMMAND   : node scripts/copy-cli.js --source-bucket task04-source --source-key fixtures/large file (23MiB).bin --dest-bucket task04-destination --dest-key copied/cli-demo.bin --part-size 5242880 --concurrency 3
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:39:33 +0300
+----------------------------------------------------------------
+S3 target: http://127.0.0.1:5000
+{"ts":"2026-08-25T14:39:33.565Z","level":"info","event":"copy.start","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","source":{"bucket":"task04-source","key":"fixtures/large file (23MiB).bin"},"destination":{"bucket":"task04-destination","key":"copied/cli-demo.bin"},"requestedPartSize":5242880,"concurrency":3,"maxRetries":5}
+{"ts":"2026-08-25T14:39:33.596Z","level":"info","event":"source.inspected","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","sizeBytes":24117248,"contentType":"application/octet-stream","sourceETag":"\"50a9562aa87bb7828a854ac3a5d95643\"","lastModified":"2026-08-25T14:34:24.000Z"}
+{"ts":"2026-08-25T14:39:33.597Z","level":"info","event":"plan.computed","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","sizeBytes":24117248,"partSize":5242880,"partSizeMiB":5,"partCount":5,"autoRaised":false,"requestedPartSize":5242880,"reason":"requested part size satisfies the part-count ceiling"}
+{"ts":"2026-08-25T14:39:33.607Z","level":"info","event":"upload.created","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","uploadId":"n54dQCe0cw5jDjmX3misBUlt7Ucm064g6TKNGmppjl6IEZ3pCn4xVygg","destination":{"bucket":"task04-destination","key":"copied/cli-demo.bin"}}
+{"ts":"2026-08-25T14:39:33.708Z","level":"info","event":"part.copied","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","partNumber":1,"range":"bytes=0-5242879","bytes":5242880,"durationMs":100,"eTag":"\"51502938170fe86f8c7514a22bbe1664\"","progress":{"partsDone":1,"partCount":5,"bytesCopied":5242880,"totalBytes":24117248,"percent":21.74}}
+{"ts":"2026-08-25T14:39:33.745Z","level":"info","event":"part.copied","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","partNumber":2,"range":"bytes=5242880-10485759","bytes":5242880,"durationMs":137,"eTag":"\"17e9585168922618057f78903f78ecae\"","progress":{"partsDone":2,"partCount":5,"bytesCopied":10485760,"totalBytes":24117248,"percent":43.48}}
+{"ts":"2026-08-25T14:39:33.783Z","level":"info","event":"part.copied","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","partNumber":3,"range":"bytes=10485760-15728639","bytes":5242880,"durationMs":175,"eTag":"\"52f4d640fceed9942acb1bc0d22a0a16\"","progress":{"partsDone":3,"partCount":5,"bytesCopied":15728640,"totalBytes":24117248,"percent":65.22}}
+{"ts":"2026-08-25T14:39:33.820Z","level":"info","event":"part.copied","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","partNumber":4,"range":"bytes=15728640-20971519","bytes":5242880,"durationMs":111,"eTag":"\"76978ccea513a9534dbf8a699c8405bc\"","progress":{"partsDone":4,"partCount":5,"bytesCopied":20971520,"totalBytes":24117248,"percent":86.96}}
+{"ts":"2026-08-25T14:39:33.823Z","level":"info","event":"part.copied","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","partNumber":5,"range":"bytes=20971520-24117247","bytes":3145728,"durationMs":78,"eTag":"\"4aec97bed2ed26b4902d91de13736a39\"","progress":{"partsDone":5,"partCount":5,"bytesCopied":24117248,"totalBytes":24117248,"percent":100}}
+{"ts":"2026-08-25T14:39:34.108Z","level":"info","event":"copy.complete","correlationId":"1f2ec7c9-71ac-4238-b954-3a01fb20affb","ok":true,"source":{"bucket":"task04-source","key":"fixtures/large file (23MiB).bin"},"destination":{"bucket":"task04-destination","key":"copied/cli-demo.bin"},"sizeBytes":24117248,"partSize":5242880,"partCount":5,"autoRaised":false,"eTag":"\"66252e6c35e6a9b5920dd03b36cc164e-5\"","location":"http://task04-destination.s3.amazonaws.com/copied/cli-demo.bin","durationMs":543,"throughputMBps":42.36}
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### Structured JSON log stream - failure path (missing source, upload aborted)
+COMMAND   : node scripts/copy-cli.js --source-bucket task04-source --source-key fixtures/does-not-exist.bin --dest-bucket task04-destination --dest-key copied/never-created.bin --part-size 5242880
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:39:34 +0300
+----------------------------------------------------------------
+S3 target: http://127.0.0.1:5000
+{"ts":"2026-08-25T14:39:34.744Z","level":"info","event":"copy.start","correlationId":"4f756a2a-87ea-4a88-9de0-814a2c07ed7f","source":{"bucket":"task04-source","key":"fixtures/does-not-exist.bin"},"destination":{"bucket":"task04-destination","key":"copied/never-created.bin"},"requestedPartSize":5242880,"concurrency":4,"maxRetries":5}
+{"ts":"2026-08-25T14:39:34.771Z","level":"error","event":"copy.failed","correlationId":"4f756a2a-87ea-4a88-9de0-814a2c07ed7f","error":"Source object not found: s3://task04-source/fixtures/does-not-exist.bin","code":"SOURCE_NOT_FOUND","durationMs":27}
+EXIT CODE : 1
+

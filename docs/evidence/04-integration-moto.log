@@ -1,0 +1,26 @@
+﻿----------------------------------------------------------------
+### Integration tests against moto (real S3 API)
+COMMAND   : node --test test/integration/moto-copy.test.js
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:34:23 +0300
+----------------------------------------------------------------
+▶ S3 to S3 multipart copy against moto
+  ✔ copies the object using multiple parts (500.5054ms)
+  ✔ destination bytes are identical to the source (255.5875ms)
+  ✔ destination ETag carries the multipart signature (12.3847ms)
+  ✔ structured logs cover the full lifecycle with one correlationId (0.3764ms)
+  ✔ no orphaned multipart uploads remain after success (8.1628ms)
+  ✔ a failed copy aborts its upload and leaves no orphans (34.9883ms)
+  ✔ an upload interrupted after creation is aborted, not left dangling (32.5065ms)
+  ✔ default part size is the 5 GiB maximum (417.2376ms)
+✔ S3 to S3 multipart copy against moto (1833.0268ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2082.3627
+EXIT CODE : 0
+

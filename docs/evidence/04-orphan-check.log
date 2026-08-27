@@ -1,0 +1,29 @@
+﻿----------------------------------------------------------------
+### Final bucket state: objects, multipart ETag signatures, orphaned upload count
+COMMAND   : node scripts/bucket-state.js
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:39:35 +0300
+----------------------------------------------------------------
+S3 target: http://127.0.0.1:5000
+
+=== bucket: task04-source ===
+objects: 1
+   24117248 B  ETag=50a9562aa87bb7828a854ac3a5d95643  [single PUT]  fixtures/large file (23MiB).bin
+in-progress (orphaned) multipart uploads: 0
+
+=== bucket: task04-destination ===
+objects: 6
+   24117248 B  ETag=66252e6c35e6a9b5920dd03b36cc164e-5  [multipart: 5 part(s)]  copied/cli-demo.bin
+   24117248 B  ETag=e4acc93e16f317c330b661a13573d006-1  [multipart: 1 part(s)]  copied/default-partsize.bin
+   24117248 B  ETag=66252e6c35e6a9b5920dd03b36cc164e-5  [multipart: 5 part(s)]  copied/e2e-verified.bin
+   24117248 B  ETag=66252e6c35e6a9b5920dd03b36cc164e-5  [multipart: 5 part(s)]  copied/evidence-run.bin
+   24117248 B  ETag=66252e6c35e6a9b5920dd03b36cc164e-5  [multipart: 5 part(s)]  copied/large file (23MiB).bin
+   24117248 B  ETag=66252e6c35e6a9b5920dd03b36cc164e-5  [multipart: 5 part(s)]  copied/via-node-red.bin
+in-progress (orphaned) multipart uploads: 0
+
+----------------------------------------------------------------
+TOTAL ORPHANED MULTIPART UPLOADS: 0
+Zero orphans: every upload either completed or was explicitly aborted.
+----------------------------------------------------------------
+EXIT CODE : 0
+

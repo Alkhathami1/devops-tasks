@@ -1,0 +1,32 @@
+﻿----------------------------------------------------------------
+### Part-size planning: default 5 GiB maximum and auto-raise
+COMMAND   : node scripts/plan-table.js
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:34:26 +0300
+----------------------------------------------------------------
+S3 multipart limits enforced by the planner
+------------------------------------------
+  minimum part size : 5,242,880 bytes (5.00 MiB)
+  maximum part size : 5,368,709,120 bytes (5.00 GiB)  <-- default
+  maximum parts     : 10,000
+  maximum object    : 5,497,558,138,880 bytes (5.00 TiB)
+
+Part plans by object size
+-------------------------
+object size  requested part   chosen part  parts  auto-raised
+-----------  ---------------  -----------  -----  -----------
+23.00 MiB    5.00 MiB         5.00 MiB     5      no            # integration fixture, forces multiple parts
+23.00 MiB    default (5 GiB)  5.00 GiB     1      no            # same object at the default 5 GiB part size
+100.00 GiB   default (5 GiB)  5.00 GiB     20     no            # large object, default part size
+1.00 TiB     default (5 GiB)  5.00 GiB     205    no            # 1 TiB at the maximum part size
+1.00 TiB     5.00 MiB         105.00 MiB   9987   YES           # 1 TiB at the minimum part size -> must auto-raise
+5.00 TiB     default (5 GiB)  5.00 GiB     1024   no            # maximum legal object at the default part size
+5.00 TiB     5.00 MiB         525.00 MiB   9987   YES           # maximum legal object at the minimum -> must auto-raise
+
+Rejected inputs
+---------------
+  zero-byte object: rejected with EMPTY_OBJECT - Object size must be greater than 0 bytes; multipart copy cannot express a 0-byte object
+  object larger than 5 TiB: rejected with OBJECT_TOO_LARGE - Object size 5497558138881 exceeds the S3 maximum object size of 5497558138880 bytes (5 TiB)
+  part size above 5 GiB: rejected with PART_SIZE_TOO_LARGE - Requested part size 6442450944 exceeds the S3 maximum part size of 5368709120 bytes (5 GiB)
+EXIT CODE : 0
+

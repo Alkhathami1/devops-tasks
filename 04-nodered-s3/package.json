@@ -1,0 +1,17 @@
+{
+  "name": "nodered-s3-multipart-copy",
+  "version": "1.0.0",
+  "description": "Server-side S3 to S3 multipart copy engine (UploadPartCopy) with a Node-RED flow wrapper",
+  "private": true,
+  "main": "lib/s3-multipart-copy.js",
+  "scripts": {
+    "test:unit": "node --test test/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js",
+    "node-red": "node-red --settings ./settings.js --userDir ./.node-red"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1117.0",
+    "node-red": "^5.0.4"
+  }
+}

@@ -1,0 +1,211 @@
+[
+  {
+    "id": "task04-s3-multipart",
+    "type": "tab",
+    "label": "Task 04 - S3 multipart copy",
+    "disabled": false,
+    "info": "Server-side S3 to S3 copy using UploadPartCopy.\n\nPOST /copy with a JSON body:\n{\n  \"source\":      { \"bucket\": \"src\",  \"key\": \"path/to/object\" },\n  \"destination\": { \"bucket\": \"dst\",  \"key\": \"path/to/copy\" },\n  \"partSize\":    5242880,\n  \"concurrency\": 4\n}\n\npartSize defaults to the S3 maximum of 5 GiB and is raised automatically\nwhen the object would otherwise need more than 10000 parts.",
+    "env": []
+  },
+  {
+    "id": "http-copy-in",
+    "type": "http in",
+    "z": "task04-s3-multipart",
+    "name": "POST /copy",
+    "url": "/copy",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 120,
+    "wires": [
+      [
+        "validate-request"
+      ]
+    ]
+  },
+  {
+    "id": "manual-inject",
+    "type": "inject",
+    "z": "task04-s3-multipart",
+    "name": "manual run (edit payload)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"source\":{\"bucket\":\"task04-source\",\"key\":\"fixtures/large file (23MiB).bin\"},\"destination\":{\"bucket\":\"task04-destination\",\"key\":\"copied/from-inject.bin\"},\"partSize\":5242880,\"concurrency\":3}",
+    "payloadType": "json",
+    "x": 180,
+    "y": 200,
+    "wires": [
+      [
+        "validate-request"
+      ]
+    ]
+  },
+  {
+    "id": "validate-request",
+    "type": "function",
+    "z": "task04-s3-multipart",
+    "name": "validate request",
+    "func": "// Normalise and validate the copy request.\n// Output 1 -> valid, forwarded to the copy engine.\n// Output 2 -> invalid, short-circuited straight to the HTTP response.\n\nconst body = msg.payload || {};\n\nconst errors = [];\nconst pick = (obj, name) => (obj && typeof obj === 'object' ? obj : {})[name];\n\nconst sourceBucket = pick(body.source, 'bucket');\nconst sourceKey = pick(body.source, 'key');\nconst destBucket = pick(body.destination, 'bucket');\nconst destKey = pick(body.destination, 'key');\n\nif (!sourceBucket) errors.push('source.bucket is required');\nif (!sourceKey) errors.push('source.key is required');\nif (!destBucket) errors.push('destination.bucket is required');\nif (!destKey) errors.push('destination.key is required');\n\nif (body.partSize !== undefined) {\n    const n = Number(body.partSize);\n    if (!Number.isInteger(n) || n <= 0) errors.push('partSize must be a positive integer number of bytes');\n}\nif (body.concurrency !== undefined) {\n    const n = Number(body.concurrency);\n    if (!Number.isInteger(n) || n < 1) errors.push('concurrency must be a positive integer');\n}\n\nif (errors.length > 0) {\n    msg.statusCode = 400;\n    msg.payload = { ok: false, error: 'invalid request', details: errors };\n    node.status({ fill: 'red', shape: 'ring', text: 'invalid request' });\n    return [null, msg];\n}\n\nmsg.copyRequest = {\n    source: { bucket: sourceBucket, key: sourceKey },\n    destination: { bucket: destBucket, key: destKey },\n};\nif (body.partSize !== undefined) msg.copyRequest.partSize = Number(body.partSize);\nif (body.concurrency !== undefined) msg.copyRequest.concurrency = Number(body.concurrency);\n\nnode.status({ fill: 'blue', shape: 'dot', text: 'validated' });\nreturn [msg, null];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 410,
+    "y": 140,
+    "wires": [
+      [
+        "run-copy"
+      ],
+      [
+        "respond-if-http",
+        "debug-rejected"
+      ]
+    ]
+  },
+  {
+    "id": "run-copy",
+    "type": "function",
+    "z": "task04-s3-multipart",
+    "name": "run multipart copy",
+    "func": "// Execute the server-side multipart copy.\n//\n// The engine is a plain Node module injected through functionGlobalContext\n// (see settings.js), so it carries no Node-RED coupling and is unit tested\n// independently.\n\nconst engine = global.get('s3copy');\nconst s3 = global.get('s3Client');\nconst commands = global.get('s3Commands');\n\nif (!engine || !s3 || !commands) {\n    node.error('s3copy/s3Client/s3Commands missing from functionGlobalContext - check settings.js', msg);\n    return null;\n}\n\nconst request = msg.copyRequest;\nconst logs = [];\n\nnode.status({ fill: 'blue', shape: 'dot', text: 'copying...' });\n\n// Node-RED function nodes are most portable when async work is done in an\n// IIFE with explicit node.send/node.done rather than a returned promise.\n(async () => {\n    try {\n        const result = await engine.copyObject({\n            s3,\n            commands,\n            source: request.source,\n            destination: request.destination,\n            partSize: request.partSize,\n            concurrency: request.concurrency,\n            logSink: (line) => {\n                logs.push(JSON.parse(line));\n                node.warn(line); // surfaces the structured line in the Node-RED log\n            },\n        });\n\n        msg.statusCode = 200;\n        msg.payload = { ok: true, result, logs };\n        node.status({ fill: 'green', shape: 'dot', text: result.partCount + ' parts, ' + result.sizeBytes + ' B' });\n        node.send(msg);\n        node.done();\n    } catch (error) {\n        msg.statusCode = 500;\n        msg.payload = {\n            ok: false,\n            error: error.message,\n            code: error.code || error.name,\n            logs,\n        };\n        node.status({ fill: 'red', shape: 'dot', text: 'failed: ' + (error.code || error.name) });\n        // node.error with msg routes into the Catch node while still allowing\n        // the HTTP request to be answered.\n        node.error(error, msg);\n        node.done();\n    }\n})();\n\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 640,
+    "y": 120,
+    "wires": [
+      [
+        "respond-if-http",
+        "debug-result"
+      ]
+    ]
+  },
+  {
+    "id": "respond-if-http",
+    "type": "function",
+    "z": "task04-s3-multipart",
+    "name": "respond if HTTP",
+    "func": "// Inject-triggered runs have no msg.res. Only forward to the HTTP Response\n// node when this message actually came from an HTTP request, otherwise the\n// response node logs \"No response object\".\n\nif (msg.res) return msg;\nnode.status({ fill: 'grey', shape: 'ring', text: 'non-HTTP run, not responding' });\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 870,
+    "y": 140,
+    "wires": [
+      [
+        "http-copy-out"
+      ]
+    ]
+  },
+  {
+    "id": "http-copy-out",
+    "type": "http response",
+    "z": "task04-s3-multipart",
+    "name": "respond",
+    "statusCode": "",
+    "headers": {},
+    "x": 1080,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "catch-copy-errors",
+    "type": "catch",
+    "z": "task04-s3-multipart",
+    "name": "catch copy errors",
+    "scope": null,
+    "uncaught": false,
+    "x": 410,
+    "y": 300,
+    "wires": [
+      [
+        "format-error"
+      ]
+    ]
+  },
+  {
+    "id": "format-error",
+    "type": "function",
+    "z": "task04-s3-multipart",
+    "name": "format error",
+    "func": "// Catch node handler: shape any uncaught error into the same JSON envelope\n// the happy path uses, so API consumers see one consistent contract.\n\nconst err = msg.error || {};\n\nmsg.statusCode = msg.statusCode || 500;\nmsg.payload = {\n    ok: false,\n    error: err.message || 'unknown error',\n    source: err.source ? { id: err.source.id, type: err.source.type } : undefined,\n    logs: (msg.payload && msg.payload.logs) || [],\n};\n\nnode.status({ fill: 'red', shape: 'dot', text: 'error caught' });\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 640,
+    "y": 300,
+    "wires": [
+      [
+        "respond-if-http",
+        "debug-error"
+      ]
+    ]
+  },
+  {
+    "id": "debug-result",
+    "type": "debug",
+    "z": "task04-s3-multipart",
+    "name": "copy result",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 880,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "debug-error",
+    "type": "debug",
+    "z": "task04-s3-multipart",
+    "name": "copy error",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 880,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "debug-rejected",
+    "type": "debug",
+    "z": "task04-s3-multipart",
+    "name": "rejected request",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 890,
+    "y": 220,
+    "wires": []
+  }
+]

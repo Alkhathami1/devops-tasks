@@ -1,0 +1,73 @@
+﻿----------------------------------------------------------------
+### Node-RED startup (version, flow file, S3 target, listening address)
+COMMAND   : grep -E Node-RED version|Node.js  version|Settings file|Flows file|task04. S3 target|Server now running|Started flows C:/Users/abual/AppData/Local/Temp/claude/C--Users-abual-devops-tasks/35ad5ad1-99c8-416c-9dff-91b6fc998aa1/scratchpad/nodered-run.log
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:39:29 +0300
+----------------------------------------------------------------
+[task04] S3 target: http://127.0.0.1:5000
+25 Aug 17:39:08 - [info] Node-RED version: v5.0.4
+25 Aug 17:39:08 - [info] Node.js  version: v24.13.0
+25 Aug 17:39:11 - [info] Settings file  : C:\Users\abual\devops-tasks\04-nodered-s3\settings.js
+25 Aug 17:39:11 - [info] Flows file     : C:\Users\abual\devops-tasks\04-nodered-s3\flows\flows.json
+25 Aug 17:39:11 - [info] Server now running at http://127.0.0.1:1880/
+25 Aug 17:39:11 - [info] Started flows
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### POST /copy through the Node-RED flow (raw HTTP)
+COMMAND   : curl -sS -X POST http://127.0.0.1:1880/copy -H Content-Type: application/json -d {"source":{"bucket":"task04-source","key":"fixtures/large file (23MiB).bin"},"destination":{"bucket":"task04-destination","key":"copied/evidence-run.bin"},"partSize":5242880,"concurrency":3} -w \nHTTP_STATUS:%{http_code}\n
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:39:30 +0300
+----------------------------------------------------------------
+{"ok":true,"result":{"ok":true,"correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","source":{"bucket":"task04-source","key":"fixtures/large file (23MiB).bin"},"destination":{"bucket":"task04-destination","key":"copied/evidence-run.bin"},"sizeBytes":24117248,"partSize":5242880,"partCount":5,"autoRaised":false,"eTag":"\"66252e6c35e6a9b5920dd03b36cc164e-5\"","location":"http://task04-destination.s3.amazonaws.com/copied/evidence-run.bin","durationMs":602,"throughputMBps":38.21},"logs":[{"ts":"2026-08-25T14:39:30.372Z","level":"info","event":"copy.start","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","source":{"bucket":"task04-source","key":"fixtures/large file (23MiB).bin"},"destination":{"bucket":"task04-destination","key":"copied/evidence-run.bin"},"requestedPartSize":5242880,"concurrency":3,"maxRetries":5},{"ts":"2026-08-25T14:39:30.405Z","level":"info","event":"source.inspected","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","sizeBytes":24117248,"contentType":"application/octet-stream","sourceETag":"\"50a9562aa87bb7828a854ac3a5d95643\"","lastModified":"2026-08-25T14:34:24.000Z"},{"ts":"2026-08-25T14:39:30.406Z","level":"info","event":"plan.computed","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","sizeBytes":24117248,"partSize":5242880,"partSizeMiB":5,"partCount":5,"autoRaised":false,"requestedPartSize":5242880,"reason":"requested part size satisfies the part-count ceiling"},{"ts":"2026-08-25T14:39:30.419Z","level":"info","event":"upload.created","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","uploadId":"1PQnwaCY3ZSaYMa9yhJRgdBUw2revuaByaEMJeFgJWQvmotWgfgbQCMSQ","destination":{"bucket":"task04-destination","key":"copied/evidence-run.bin"}},{"ts":"2026-08-25T14:39:30.566Z","level":"info","event":"part.copied","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","partNumber":2,"range":"bytes=5242880-10485759","bytes":5242880,"durationMs":147,"eTag":"\"17e9585168922618057f78903f78ecae\"","progress":{"partsDone":1,"partCount":5,"bytesCopied":5242880,"totalBytes":24117248,"percent":21.74}},{"ts":"2026-08-25T14:39:30.606Z","level":"info","event":"part.copied","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","partNumber":3,"range":"bytes=10485760-15728639","bytes":5242880,"durationMs":187,"eTag":"\"52f4d640fceed9942acb1bc0d22a0a16\"","progress":{"partsDone":2,"partCount":5,"bytesCopied":10485760,"totalBytes":24117248,"percent":43.48}},{"ts":"2026-08-25T14:39:30.650Z","level":"info","event":"part.copied","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","partNumber":1,"range":"bytes=0-5242879","bytes":5242880,"durationMs":231,"eTag":"\"51502938170fe86f8c7514a22bbe1664\"","progress":{"partsDone":3,"partCount":5,"bytesCopied":15728640,"totalBytes":24117248,"percent":65.22}},{"ts":"2026-08-25T14:39:30.680Z","level":"info","event":"part.copied","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","partNumber":4,"range":"bytes=15728640-20971519","bytes":5242880,"durationMs":114,"eTag":"\"76978ccea513a9534dbf8a699c8405bc\"","progress":{"partsDone":4,"partCount":5,"bytesCopied":20971520,"totalBytes":24117248,"percent":86.96}},{"ts":"2026-08-25T14:39:30.685Z","level":"info","event":"part.copied","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","partNumber":5,"range":"bytes=20971520-24117247","bytes":3145728,"durationMs":79,"eTag":"\"4aec97bed2ed26b4902d91de13736a39\"","progress":{"partsDone":5,"partCount":5,"bytesCopied":24117248,"totalBytes":24117248,"percent":100}},{"ts":"2026-08-25T14:39:30.974Z","level":"info","event":"copy.complete","correlationId":"979e2630-7a0b-4042-b131-958d9d5d5c6b","ok":true,"source":{"bucket":"task04-source","key":"fixtures/large file (23MiB).bin"},"destination":{"bucket":"task04-destination","key":"copied/evidence-run.bin"},"sizeBytes":24117248,"partSize":5242880,"partCount":5,"autoRaised":false,"eTag":"\"66252e6c35e6a9b5920dd03b36cc164e-5\"","location":"http://task04-destination.s3.amazonaws.com/copied/evidence-run.bin","durationMs":602,"throughputMBps":38.21}]}
+HTTP_STATUS:200
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### End-to-end verification: hash round-trip, ETag, 400 path, failure path, orphan check
+COMMAND   : node scripts/verify-e2e.js
+CWD       : /c/Users/abual/devops-tasks/04-nodered-s3
+TIMESTAMP : 2026-08-25 17:39:31 +0300
+----------------------------------------------------------------
+=== Node-RED end-to-end verification ===
+Node-RED : http://127.0.0.1:1880
+S3       : http://127.0.0.1:5000
+
+--- 1. successful copy through POST /copy ---
+[PASS] HTTP 200 returned -- got 200
+[PASS] payload.ok is true
+[PASS] more than one part used -- partCount=5
+[PASS] part count is 5
+[PASS] part size is 5 MiB
+[PASS] log contains copy.start
+[PASS] log contains source.inspected
+[PASS] log contains plan.computed
+[PASS] log contains upload.created
+[PASS] log contains copy.complete
+[PASS] one part.copied per part
+[PASS] single correlationId across all log lines -- 1 distinct id(s)
+
+--- 2. independent verification via the S3 API ---
+  source sha256      : 64fc4bc384a8e9524f29302dd82b380a512a9c3e94d9494a2b46dc7984ed5276
+  destination sha256 : 64fc4bc384a8e9524f29302dd82b380a512a9c3e94d9494a2b46dc7984ed5276
+[PASS] byte lengths match -- 24117248 vs 24117248
+[PASS] sha256 digests match
+  destination ETag   : 66252e6c35e6a9b5920dd03b36cc164e-5
+[PASS] ETag carries multipart suffix
+[PASS] ETag suffix matches part count -- 66252e6c35e6a9b5920dd03b36cc164e-5
+
+--- 3. invalid request is rejected with 400 ---
+[PASS] HTTP 400 returned -- got 400
+[PASS] ok is false
+[PASS] validation details listed -- ["source.key is required","destination.bucket is required","destination.key is required"]
+
+--- 4. failing copy aborts cleanly, no orphaned uploads ---
+[PASS] non-200 returned for missing source -- got 500
+[PASS] ok is false
+[PASS] zero orphaned multipart uploads -- none
+
+=========================================
+RESULT: ALL CHECKS PASSED
+=========================================
+EXIT CODE : 0
+
