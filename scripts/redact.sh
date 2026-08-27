@@ -60,15 +60,28 @@ GCPNUM="${GCP_PROJECT_NUMBER:-}"
 [ -z "$ACCT" ]   && echo "redact.sh: AWS_ACCOUNT_ID unset, account-id masking inactive" >&2
 [ -z "$GCPNUM" ] && echo "redact.sh: GCP_PROJECT_NUMBER unset, project-number masking inactive" >&2
 
-ARGS=()
+ARGS=(
+  # Key material first. Every rule below is a separate sed expression applied
+  # in order, so a later rule that rewrites digits inside a base64 run breaks
+  # the match this one needs and leaves most of the key in the log - which is
+  # exactly what the blanket 12-digit rule does to a key containing twelve
+  # consecutive digits. Masking the key material before anything else touches
+  # the stream removes the interaction rather than relying on luck.
+  #
+  # `wg show` prints `private key: (hidden)`, but a config read with cat does
+  # not. Curve25519 keys are 44 base64 characters; the public halves carry a
+  # different label and are deliberately left alone.
+  -e 's/(AKIA|ASIA)[0-9A-Z]{16}/<AWS-ACCESS-KEY-ID>/g'
+  -e 's#(PrivateKey|PresharedKey)([[:space:]]*=[[:space:]]*)[A-Za-z0-9+/]{43}=#\1\2<REDACTED>#g'
+  -e 's#(private key:[[:space:]]*)[A-Za-z0-9+/]{43}=#\1<REDACTED>#g'
+  -e 's/(aws_secret_access_key|SecretAccessKey|secret_key)([[:space:]]*[:=][[:space:]]*)["'"'"']?[A-Za-z0-9\/+=]{40}["'"'"']?/\1\2<REDACTED>/gI'
+  -e 's/(aws_session_token|SessionToken)([[:space:]]*[:=][[:space:]]*)["'"'"']?[A-Za-z0-9\/+=_-]{100,}["'"'"']?/\1\2<REDACTED>/gI'
+)
 [ "$MODE" = "full" ] && ARGS+=(-e 's/[0-9]{12}/<ACCOUNT-ID>/g')
 
 ARGS+=(
   -e 's#arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{12}:#arn:aws:<SERVICE>:<REGION>:<ACCOUNT-ID>:#g'
   -e 's#arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:<ACCOUNT-ID>:#arn:aws:<SERVICE>:<REGION>:<ACCOUNT-ID>:#g'
-  -e 's/(AKIA|ASIA)[0-9A-Z]{16}/<AWS-ACCESS-KEY-ID>/g'
-  -e 's/(aws_secret_access_key|SecretAccessKey|secret_key)([[:space:]]*[:=][[:space:]]*)["'"'"']?[A-Za-z0-9\/+=]{40}["'"'"']?/\1\2<REDACTED>/gI'
-  -e 's/(aws_session_token|SessionToken)([[:space:]]*[:=][[:space:]]*)["'"'"']?[A-Za-z0-9\/+=_-]{100,}["'"'"']?/\1\2<REDACTED>/gI'
   -e 's/(X-Amz-Signature=)[a-f0-9]+/\1<REDACTED>/g'
   -e 's/(X-Amz-Credential=)[^&[:space:]]+/\1<REDACTED>/g'
   -e 's#rtp://[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+#rtp://<MEDIALIVE-INGEST-ENDPOINT>#g'

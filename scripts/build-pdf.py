@@ -149,34 +149,63 @@ def parse(md):
     return blocks
 
 
+CODE_MARK = "\ue000"   # private-use sentinel; never appears in the document
+
+
 def inline_segments(text, _style=""):
     """Split inline markdown into (text, style, mono) runs.
 
-    Recurses into emphasis so that `code` inside **bold** is rendered as bold
+    Code spans are lifted out before emphasis is considered. A single
+    left-to-right scan that treats them as equal alternatives lets an italic
+    wrapper pair its opening asterisk with one that lives inside a code span,
+    which swallows the span and the rest of the line with it. Removing the
+    spans first settles the ambiguity the way a conforming parser does.
+
+    Recurses into emphasis, so a code span inside **bold** is rendered as bold
     monospace rather than printing its own backticks.
     """
-    text = LINK_RE.sub(r"", text)
-    token = re.compile(r"(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*.+?\*\*|\*[^*]+\*|_[^_]+_)")
+    text = LINK_RE.sub(r"\1", text)
+
+    spans = []
+
+    def stash(m):
+        spans.append(m.group(1))
+        return "%s%d%s" % (CODE_MARK, len(spans) - 1, CODE_MARK)
+
+    text = re.sub(r"`([^`]+)`", stash, text)
+    token = re.compile(r"(\*\*\*[^*]+\*\*\*|\*\*.+?\*\*|\*[^*]+\*|_[^_]+_)")
+    split_marks = re.compile(CODE_MARK + r"(\d+)" + CODE_MARK)
 
     def merge(a, b):
         return "".join(sorted(set(a + b), key="BI".index))
+
+    def restore(chunk):
+        """Put the spans back so a recursive call re-stashes them."""
+        return split_marks.sub(lambda m: "`%s`" % spans[int(m.group(1))], chunk)
+
+    def emit(chunk, style):
+        """Turn a plain chunk into runs, reinstating any stashed code span."""
+        runs = []
+        for i, piece in enumerate(split_marks.split(chunk)):
+            if not piece:
+                continue
+            runs.append((spans[int(piece)] if i % 2 else piece, style, i % 2 == 1))
+        return runs
 
     out = []
     for part in token.split(text):
         if not part:
             continue
-        if part.startswith("`") and part.endswith("`") and len(part) > 1:
-            out.append((part[1:-1], _style, True))
-        elif part.startswith("***") and part.endswith("***"):
-            out.extend(inline_segments(part[3:-3], merge(_style, "BI")))
+        if part.startswith("***") and part.endswith("***"):
+            out.extend(inline_segments(restore(part[3:-3]), merge(_style, "BI")))
         elif part.startswith("**") and part.endswith("**"):
-            out.extend(inline_segments(part[2:-2], merge(_style, "B")))
+            out.extend(inline_segments(restore(part[2:-2]), merge(_style, "B")))
         elif part.startswith("*") and part.endswith("*") and len(part) > 2:
-            out.extend(inline_segments(part[1:-1], merge(_style, "I")))
+            out.extend(inline_segments(restore(part[1:-1]), merge(_style, "I")))
         elif part.startswith("_") and part.endswith("_") and len(part) > 2:
-            out.extend(inline_segments(part[1:-1], merge(_style, "I")))
+            out.extend(inline_segments(restore(part[1:-1]), merge(_style, "I")))
         else:
-            out.append((part, _style, False))
+            out.extend(emit(part, _style))
     return out
 
 
@@ -184,7 +213,12 @@ LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 
 def strip_inline(text):
-    return re.sub(r"[`*_]", "", LINK_RE.sub(r"", text))
+    """The plain text of a line, markup removed but code-span content intact.
+
+    Defers to inline_segments so it cannot disagree with what gets rendered:
+    stripping `[`*_]` blindly would also eat a glob living inside a code span.
+    """
+    return "".join(run for run, _style, _mono in inline_segments(text))
 
 
 def preprocess(md):

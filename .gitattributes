@@ -1,0 +1,26 @@
+# Shell scripts and templates run inside Linux containers, so they must keep LF
+# regardless of the platform they are checked out on. A CRLF checkout turns the
+# shebang into `#!/usr/bin/env bash\r`, and the kernel looks for an interpreter
+# named "bash\r" that does not exist. The failure reads as a missing binary
+# rather than a line-ending problem, which is what makes it worth pinning here
+# rather than relying on a local core.autocrlf setting.
+*.sh    text eol=lf
+*.j2    text eol=lf
+*.bash  text eol=lf
+
+# Same reasoning: these are read by Linux tooling.
+Dockerfile      text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.conf          text eol=lf
+*.tf            text eol=lf
+*.sql           text eol=lf
+*.py            text eol=lf
+
+# Evidence logs are captured output. Normalizing them would rewrite bytes that
+# were recorded, so they are left exactly as written.
+docs/evidence/*.log -text
+
+# Binary deliverables.
+*.pdf   binary
+*.docx  binary

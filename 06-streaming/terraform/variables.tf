@@ -46,7 +46,7 @@ variable "input_codec" {
 
 variable "ingest_source_cidr" {
   description = <<-EOT
-    Source permitted to push to the RTP input.
+    Source permitted to push to the RTMP input.
 
     0.0.0.0/0 by default because the operator address is dynamic and the
     channel lives for minutes. That is a real weakening and is stated in the

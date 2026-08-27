@@ -1,0 +1,9 @@
+---
+# The app tier serves one share, reachable only through the tunnel.
+samba_share_name: task05share
+samba_share_path: /srv/task05share
+samba_user: smbuser
+# Generated on the host and never written to the repository. The password file
+# is mode 0600 and owned by root, mirroring how the Task 01 server holds its
+# credential.
+samba_credential_file: /etc/samba/task05-credentials

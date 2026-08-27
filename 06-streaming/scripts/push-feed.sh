@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Push the Phase 1 HEVC file to the MediaLive input.
 #
-# ffmpeg rather than OBS, and the report says so plainly: OBS is interactive
-# and cannot be driven reproducibly from a script. configs/obs-settings.md is
-# the operator-facing equivalent, written as a runbook, NOT as a record of
-# something that ran.
+# An alternative to the OBS contribution path, useful when a deterministic feed
+# is wanted rather than a live desktop. OBS is configured and driven by
+# scripts/obs-configure.sh; this pushes the Phase 1 file instead.
 #
 # -re paces the file at real time. Without it ffmpeg pushes as fast as it can
 # read, MediaLive sees a feed hundreds of times faster than wall clock, and the

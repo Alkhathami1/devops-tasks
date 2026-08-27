@@ -445,20 +445,25 @@ else
   echo "$STRAY" | sed "s/^/       /"
 fi
 
-# The history is a nine-commit arc ending at the deliverables.
-TIP_SUBJECT="$(git log -1 --format='%s' 2>/dev/null || true)"
-NCOMMITS="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
-if [ "$TIP_SUBJECT" = "chore: PDF and DOCX deliverables" ]; then
-  pass "history ends at the deliverables commit"
+# The history opens with the nine-commit build arc, in order. Completion work
+# lands on top of it rather than being folded back in, so the tip moves; what
+# should not move is the arc beneath it.
+ARC="chore: project scaffold and delivery method
+feat(01): cross-platform SMB mounts, XFS, monitoring and alerting
+feat(02): multi-tier Docker stack on isolated networks
+feat(03): SQL Server with tiered backups and point-in-time restore
+feat(04): S3 multipart copy engine and Node-RED flow
+feat(05): three-tier GCP infrastructure with Terraform and Ansible
+feat(06): HEVC pipeline and MediaLive channel with S3 archive
+docs: report, traceability, walkthroughs and reproducing guide
+chore: PDF and DOCX deliverables"
+ACTUAL="$(git log --reverse --format='%s' 2>/dev/null | head -9)"
+if [ "$ACTUAL" = "$ARC" ]; then
+  pass "history opens with the nine-commit build arc, in order"
 else
-  fail "history ends at '${TIP_SUBJECT}', not the deliverables commit"
+  fail "the first nine commits are not the build arc:"
+  diff <(echo "$ARC") <(echo "$ACTUAL") 2>/dev/null | sed "s/^/       /" | head -12
 fi
-if [ "$NCOMMITS" = "9" ]; then
-  pass "history is the nine-commit arc"
-else
-  fail "history has $NCOMMITS commits, expected 9"
-fi
-
 
 # Traceability must cover every sub-requirement, and its status vocabulary is
 # fixed at three values. A fourth would mean the table had drifted.

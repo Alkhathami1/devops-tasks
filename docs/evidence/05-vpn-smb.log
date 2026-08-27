@@ -1,0 +1,208 @@
+﻿----------------------------------------------------------------
+### The app-tier share from outside the tunnel
+COMMAND   : bash scripts/vpn-smb-check.sh outside
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-27 19:53:12 +0300
+----------------------------------------------------------------
+=== The app tier from outside the tunnel ===
+
+    app tier private address : 10.20.1.2
+    tunnel state             : not connected
+
+--- is there a WireGuard interface on this machine? ---
+      WireGuard adapter: none present
+
+--- route to the apps subnet ---
+      next hop for 10.20.1.2: none
+
+--- TCP 445 to the app tier ---
+      Test-NetConnection 10.20.1.2:445 -> False
+[PASS] the share is not reachable without the tunnel
+
+    The address is private and this machine holds no route to it. The
+    firewall rule admitting 445 names the bastion, so even a packet that
+    arrived by some other path would not match it.
+
+RESULT: outside PHASE VERIFIED
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### The tunnel measured on both ends
+COMMAND   : bash scripts/vpn-smb-check.sh inside
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-27 20:22:30 +0300
+----------------------------------------------------------------
+=== The tunnel, measured on both ends ===
+
+--- the client adapter, from Windows ---
+      
+      Name       InterfaceDescription Status
+      ----       -------------------- ------
+      task05-vpn WireGuard Tunnel     Up    
+      
+      
+      
+--- the tunnel address this machine holds ---
+      10.99.0.2
+
+--- wg show, on the bastion ---
+      interface: wg0
+        public key: Q6rGOafpGUKdsuBYLczo1vhJfqpYXpoQbrBvzxaX7mA=
+        private key: (hidden)
+        listening port: 51820
+      
+      peer: HPZaTEyMnwslcxQ/h0nxFVdLiPpPuNUtKQsISyPcVi8=
+        endpoint: <PUBLIC-IP>:52869
+        allowed ips: 10.99.0.2/32
+        latest handshake: 51 seconds ago
+        transfer: 900 B received, 764 B sent
+
+      latest handshake (epoch) : 1787851304
+      bytes received / sent    : 900 / 764
+[PASS] the peer has completed a handshake
+[PASS] traffic has passed in both directions (900 in, 764 out)
+
+--- ping the app tier private address through the tunnel ---
+      
+      Address   ResponseTime StatusCode
+      -------   ------------ ----------
+      10.20.1.2          214          0
+      10.20.1.2          211          0
+      10.20.1.2          212          0
+      10.20.1.2          271          0
+      
+      
+      
+[PASS] the app tier answers ICMP through the tunnel
+
+--- TCP 445 to the app tier, through the tunnel ---
+      Test-NetConnection 10.20.1.2:445 -> True
+[PASS] 445 is open through the tunnel
+
+RESULT: inside PHASE VERIFIED
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### The mapped drive from the Windows client
+COMMAND   : bash scripts/vpn-smb-check.sh client
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-27 20:24:39 +0300
+----------------------------------------------------------------
+=== The mapped drive, from the Windows client ===
+
+--- the mapping ---
+      Local name        Z:
+      Remote name       \\10.20.1.2\task05share
+      Resource type     Disk
+      Status            OK
+      # Opens           0
+      # Connections     1
+      The command completed successfully.
+      
+
+--- what this machine wrote onto it ---
+      
+      Name             Length LastWriteTime       
+      ----             ------ -------------       
+      from-windows.txt     68 8/27/2026 8:23:42 PM
+      
+      
+      
+      written from Windows over the WireGuard tunnel at 20260827T172338Z
+
+--- the negotiated SMB connection ---
+      (Get-SmbConnection needs elevation, so this is the captured output)
+      
+      ServerName ShareName   Dialect Encrypted NumOpens UserName        
+      ---------- ---------   ------- --------- -------- --------        
+      10.20.1.2  task05share 3.1.1        True        1 ALKHATHAMI\abual
+      
+      
+      
+[PASS] SMB 3.1.1 negotiated with the Linux server
+[PASS] the session is encrypted
+
+--- the persistence flag on the mapping ---
+      
+      LocalPath RemotePath              Status
+      --------- ----------              ------
+      Z:        \\10.20.1.2\task05share     OK
+      
+      
+      
+      persistent mapping in HKCU:NetworkZ -> \\10.20.1.2\task05share
+
+RESULT: client PHASE VERIFIED
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### The share read on the server that exports it
+COMMAND   : bash scripts/vpn-smb-check.sh server
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-27 20:24:56 +0300
+----------------------------------------------------------------
+=== The share, from the server that exports it ===
+
+--- Samba protocol floor and encryption ---
+         server min protocol = SMB3_11
+         server max protocol = SMB3_11
+         client min protocol = SMB3_11
+         smb encrypt = required
+         server signing = mandatory
+         smb ports = 445
+         smb encrypt = required
+
+--- the account and the share ---
+      smbuser:994:
+      drwxrwxr-x 2 smbuser smbuser 4096 Aug 27 17:23 /srv/task05share
+      -rw------- 1 root root 60 Aug 27 16:40 /etc/samba/task05-credentials
+
+--- the firewall rule that admits 445 ---
+
+--- what the client wrote, read on the server itself ---
+      (this read never goes through the client's mount)
+      total 4
+      -rw-rw-r-- 1 smbuser smbuser 68 Aug 27 17:23 from-windows.txt
+      ---
+      == /srv/task05share/from-windows.txt
+      written from Windows over the WireGuard tunnel at 20260827T172338Z
+
+--- active SMB sessions and the dialect each negotiated ---
+      
+      Samba version 4.17.12-Debian
+      PID     Username     Group        Machine                                   Protocol Version  Encryption           Signing              
+      ----------------------------------------------------------------------------------------------------------------------------------------
+      5119    smbuser      smbuser      10.10.1.3 (ipv4:10.10.1.3:60633)          SMB3_11           AES-128-GCM          AES-128-GMAC         
+      
+      
+      Service      pid     Machine       Connected at                     Encryption   Signing     
+      ---------------------------------------------------------------------------------------------
+      task05share  5119    10.10.1.3     Thu Aug 27 17:23:41 2026 UTC     AES-128-GCM  AES-128-GMAC
+      
+
+RESULT: server PHASE VERIFIED
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### The firewall rule that admits 445 to the app tier
+COMMAND   : bash -c PROJ="$(gcloud config get-value project 2>/dev/null)"; echo "project: $PROJ"; echo ""; gcloud compute firewall-rules describe task05-apps-allow-smb-from-vpn --project "$PROJ" --format="table(name,network.basename(),sourceRanges.list(),allowed[0].ports.list(),targetServiceAccounts.list())"
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-27 20:25:55 +0300
+----------------------------------------------------------------
+project: 
+
+C:\Users\abual\AppData\Local\Microsoft\WindowsApps\python3.11.exe: can't open file 'C:\\c\\Users\\abual\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\lib\\gcloud.py': [Errno 2] No such file or directory
+EXIT CODE : 2
+
+----------------------------------------------------------------
+### The firewall rule that admits 445 to the app tier
+COMMAND   : bash -c PROJ="$(env -u MSYS_NO_PATHCONV gcloud config get-value project 2>/dev/null)"; echo "project: $PROJ"; echo ""; env -u MSYS_NO_PATHCONV gcloud compute firewall-rules describe task05-apps-allow-smb-from-vpn --project "$PROJ" --format="table(name,network.basename(),sourceRanges.list(),allowed[0].ports.list(),targetServiceAccounts.list())"
+CWD       : /c/Users/abual/devops-tasks/05-terraform-ansible
+TIMESTAMP : 2026-08-27 20:26:19 +0300
+----------------------------------------------------------------
+project: test-environment-506521
+
+NAME                            NETWORK          SOURCE_RANGES  PORTS  TARGET_SERVICE_ACCOUNTS
+task05-apps-allow-smb-from-vpn  task05-apps-vpc  10.10.1.3/32   445    task05-app@test-environment-506521.iam.gserviceaccount.com
+EXIT CODE : 0
+

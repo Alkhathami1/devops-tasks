@@ -1,0 +1,86 @@
+﻿----------------------------------------------------------------
+### OBS Studio configured as the contribution encoder, and what it logged
+COMMAND   : bash scripts/obs-evidence.sh
+CWD       : /c/Users/abual/devops-tasks/06-streaming
+TIMESTAMP : 2026-08-27 20:51:38 +0300
+----------------------------------------------------------------
+=== OBS Studio as the contribution encoder ===
+
+    ProductName    : OBS Studio
+    ProductVersion : 32.2.1
+
+--- the profile OBS reads, on disk ---
+    /c/Users/abual/AppData/Roaming/obs-studio/basic/profiles/Task06
+      basic.ini
+      recordEncoder.json
+      service.json
+      streamEncoder.json
+
+--- video and audio ---
+      BaseCX=1920
+      BaseCY=1080
+      OutputCX=1920
+      OutputCY=1080
+      FPSType=0
+      FPSCommon=60
+      ColorFormat=NV12
+      ColorSpace=709
+      ColorRange=Partial
+      SampleRate=48000
+      ChannelSetup=Stereo
+      Mode=Advanced
+      Encoder=obs_x264
+      RecFormat2=mkv
+      Track1Bitrate=192
+
+--- the stream encoder, field by field ---
+      {
+          "bitrate": 12000,
+          "keyint_sec": 2,
+          "rate_control": "CBR",
+          "preset": "medium",
+          "profile": "main",
+          "tune": "",
+          "bf": 3,
+          "x264opts": ""
+      }
+--- the scene collection ---
+      collection : Task06
+      scene      : Task06
+      canvas     : 1920x1080
+      source     : Display  (monitor_capture)
+
+--- what OBS logged while it ran ---
+      log: 2026-08-27 20-41-52.txt
+
+      20:41:54.097: audio settings reset:
+      20:41:56.119: video settings reset:
+      20:41:58.907: [x264 encoder: 'advanced_video_stream'] preset: medium
+      20:41:58.907: [x264 encoder: 'advanced_video_stream'] profile: main
+      20:41:58.907: [x264 encoder: 'advanced_video_stream'] settings:
+      20:41:58.915: [rtmp stream: 'adv_stream'] Connecting to RTMP URL rtmp://<PUBLIC-IP>:1935/task06...
+      20:41:58.916: [x264 encoder: 'advanced_video_recording'] preset: medium
+      20:41:58.916: [x264 encoder: 'advanced_video_recording'] profile: main
+      20:41:58.916: [x264 encoder: 'advanced_video_recording'] settings:
+      20:41:58.966: ==== Recording Start ===============================================
+      20:41:58.966: [ffmpeg muxer: 'adv_file_output'] Writing file 'C:/Users/abual/Videos/2026-08-27 20-41-58.mkv'...
+      20:42:00.322: [rtmp stream: 'adv_stream'] Connection to rtmp://<PUBLIC-IP>:1935/task06 (<PUBLIC-IP>) successful
+      20:42:00.328: ==== Streaming Start ===============================================
+
+[PASS] OBS connected to the MediaLive RTMP ingest
+[PASS] OBS started streaming
+[PASS] OBS started recording locally
+
+--- output resolution and frame rate, from the OBS log ---
+      20:41:56.119: 	base resolution:   1920x1080
+      20:41:56.119: 	output resolution: 1920x1080
+      20:41:56.119: 	fps:               60/1
+
+    The contribution leg is H.264 over RTMP, because that is what
+    MediaLive's RTMP input accepts. The channel decodes it and encodes
+    HEVC into the ARCHIVE output group, so the .ts segments in S3 - the
+    thing the task asks to record - are HEVC. See 06-s3-archive.log.
+
+RESULT: OBS CONTRIBUTION VERIFIED
+EXIT CODE : 0
+

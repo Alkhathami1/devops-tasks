@@ -1,0 +1,546 @@
+﻿----------------------------------------------------------------
+### Persistence across a reboot: the state before
+COMMAND   : bash scripts/reboot-check.sh before
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-27 20:54:58 +0300
+----------------------------------------------------------------
+=== Persistence across a reboot: before ===
+
+    host time: 2026-08-27T17:54:58Z
+    uptime   : 
+Wednesday, August 19, 2026 4:55:01 PM
+
+--- what is configured to come back on its own ---
+
+    container restart policy:
+      /task01-linuxbox  restart=unless-stopped  running=true
+[PASS] restart policy is unless-stopped, so Docker restarts it after a reboot
+
+    WireGuard tunnel service:
+      
+      Name                        Status StartType
+      ----                        ------ ---------
+      WireGuardTunnel$task05-vpn Running Automatic
+      
+      
+      
+[PASS] tunnel service start type is Automatic
+[PASS] tunnel service is running now
+
+    Docker Desktop at sign-in:
+      registered in HKCU Run, so it starts at sign-in
+[PASS] Docker Desktop starts at sign-in
+
+--- the state that should survive ---
+
+    CIFS mount inside the container:
+      //172.25.112.1/task01share /mnt/winshare cifs   rw,relatime,vers=3.1.1,cache=strict,username=task01smb,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=172.25.112.1,file_mode=0755,dir_mode=0755,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+
+    the fstab entry that will be replayed at container start:
+      //172.25.112.1/task01share  /mnt/winshare  cifs  credentials=/etc/samba/windows.creds,vers=3.1.1,seal,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30,uid=0,gid=0  0 0
+
+    mapped drive on Windows:
+      
+      LocalPath RemotePath              Status
+      --------- ----------              ------
+      Z:        \\10.20.1.2\task05share     OK
+      
+      
+      
+      persistent entry: \\10.20.1.2\task05share
+
+RESULT: before PHASE VERIFIED
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### Persistence across a reboot: the state after
+COMMAND   : bash scripts/reboot-check.sh after
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-27 21:23:03 +0300
+----------------------------------------------------------------
+=== Persistence across a reboot: after ===
+
+    host time: 2026-08-27T18:23:03Z
+    uptime   : 
+Thursday, August 27, 2026 9:05:34 PM
+
+--- no mount command has been issued since the reboot ---
+
+    WireGuard tunnel service:
+      
+      Name                        Status StartType
+      ----                        ------ ---------
+      WireGuardTunnel$task05-vpn Running Automatic
+      
+      
+      
+[PASS] the tunnel service came back on its own
+
+    the tunnel address this machine holds:
+      10.99.0.2
+
+    container state:
+      /task01-linuxbox  running=true  startedAt=2026-08-27T18:22:45.947652965Z  restarts=0
+
+    CIFS mount inside the container, established by fstab at start:
+      //172.25.112.1/task01share /mnt/winshare cifs   rw,relatime,vers=3.1.1,cache=strict,username=task01smb,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=172.25.112.1,file_mode=0755,dir_mode=0755,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+[PASS] the CIFS mount is live at /mnt/winshare with no manual mount command
+
+    entrypoint log showing the mount being replayed:
+      2026-08-27T18:22:46Z [entrypoint] smb.conf validates
+      2026-08-27T18:22:46Z [entrypoint] starting smbd
+      2026-08-27T18:22:48Z [entrypoint] smbd running (pid 22), listening on 445
+      2026-08-27T18:22:48Z [entrypoint] cifs metrics exporter running (pid 29)
+      --
+      2026-08-27T18:22:50Z [entrypoint] mounting from /etc/fstab
+      2026-08-27T18:22:50Z [entrypoint] mount -a completed
+          //172.25.112.1/task01share /mnt/winshare cifs
+
+    a read through that mount:
+      total 5
+      -rwxr-xr-x 1 root root 181 Aug 26 15:59 README-from-windows.txt
+      -rwxr-xr-x 1 root root  49 Aug 26 18:41 from-linux-20260826T184113Z.txt
+      -rwxr-xr-x 1 root root  49 Aug 26 18:44 from-linux-20260826T184415Z.txt
+      -rwxr-xr-x 1 root root  49 Aug 26 19:03 from-linux-20260826T190304Z.txt
+      ---
+      ==> /mnt/winshare/README-from-windows.txt <==
+      ﻿This file was created on the WINDOWS side and is served over SMB3.
+      Host    : ALKHATHAMI
+      Created : 2026-08-26T18:59:26+03:00
+      Share   : \\ALKHATHAMI\task01share -> C:\task01share
+      
+      ==> /mnt/winshare/from-linux-20260826T184113Z.txt <==
+      written from Linux over SMB3 at 20260826T184113Z
+      
+      ==> /mnt/winshare/from-linux-20260826T184415Z.txt <==
+      written from Linux over SMB3 at 20260826T184415Z
+      
+      ==> /mnt/winshare/from-linux-20260826T190304Z.txt <==
+      written from Linux over SMB3 at 20260826T190304Z
+      
+      ==> /mnt/winshare/from-linux-20260826T190500Z.txt <==
+      written from Linux over SMB3 at 20260826T190500Z
+      
+      ==> /mnt/winshare/from-linux-20260826T191138Z.txt <==
+      written from Linux over SMB3 at 20260826T191138Z
+      
+      ==> /mnt/winshare/from-linux-20260826T204614Z.txt <==
+      written from Linux over SMB3 at 20260826T204614Z
+      
+      ==> /mnt/winshare/from-linux-20260826T205747Z.txt <==
+      written from Linux over SMB3 at 20260826T205747Z
+      
+      ==> /mnt/winshare/from-linux-20260827T175350Z.txt <==
+      written from Linux over SMB3 at 20260827T175350Z
+[PASS] the share is readable through the restored mount
+
+    mapped drive on Windows:
+      
+      LocalPath RemotePath                   Status
+      --------- ----------                   ------
+      Z:        \\10.20.1.2\task05share Unavailable
+      
+      
+      
+
+    a read from Z:, which is what reconnects a persistent mapping:
+      
+      content: <not read>
+[FAIL] Z: did not reconnect
+
+RESULT: FAILURES PRESENT
+EXIT CODE : 1
+
+----------------------------------------------------------------
+### Why the mapped drive did not reconnect, and what it needs
+COMMAND   : bash -c 
+ps1() { powershell.exe -NoProfile -NonInteractive -Command "$1" 2>/dev/null | tr -d "\r"; }
+echo "=== The mapped drive after the reboot ==="
+echo ""
+echo "    The tunnel came back on its own and the path is reachable:"
+echo "      tunnel address : $(ps1 "Get-NetIPAddress -AddressFamily IPv4 | Where-Object {\$_.IPAddress -like \"10.99.*\"} | Select-Object -ExpandProperty IPAddress")"
+echo "      445 to the app tier: $(ps1 "(Test-NetConnection -ComputerName 10.20.1.2 -Port 445 -WarningAction SilentlyContinue).TcpTestSucceeded")"
+echo ""
+echo "    The mapping entry survived the reboot:"
+ps1 "net use Z:" | grep -E "Local name|Remote name" | sed "s/^/      /"
+echo ""
+echo "    What it could not do was authenticate. A persistent mapping stores the"
+echo "    PATH, not the credential: net use with an inline password authenticates"
+echo "    that logon session only. After a reboot Windows holds the mapping and"
+echo "    has nothing to present, so the drive is marked Unavailable."
+echo ""
+echo "    Stored credentials for the host, immediately after the reboot:"
+echo "      (captured before the fix below)"
+echo "      * NONE *"
+echo ""
+echo "    With the credential stored in Credential Manager, the mapping works:"
+ps1 "cmdkey /list:10.20.1.2" | grep -E "Target|User" | sed "s/^/      /"
+echo ""
+ps1 "Get-ChildItem Z:\ | Select-Object Name,Length,LastWriteTime | Format-Table -AutoSize | Out-String" | sed "s/^/      /"
+echo "      content: $(ps1 "Get-Content Z:\from-windows.txt")"
+echo ""
+cat /c/Users/abual/wireguard-task05/smbconn2.txt 2>/dev/null | sed "s/^/      /"
+echo ""
+echo "RESULT: MAPPING REQUIRES A STORED CREDENTIAL TO RECONNECT UNATTENDED"
+
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-27 21:25:15 +0300
+----------------------------------------------------------------
+=== The mapped drive after the reboot ===
+
+    The tunnel came back on its own and the path is reachable:
+      tunnel address : 10.99.0.2
+      445 to the app tier: True
+
+    The mapping entry survived the reboot:
+      Local name        Z:
+      Remote name       \\10.20.1.2\task05share
+
+    What it could not do was authenticate. A persistent mapping stores the
+    PATH, not the credential: net use with an inline password authenticates
+    that logon session only. After a reboot Windows holds the mapping and
+    has nothing to present, so the drive is marked Unavailable.
+
+    Stored credentials for the host, immediately after the reboot:
+      (captured before the fix below)
+      * NONE *
+
+    With the credential stored in Credential Manager, the mapping works:
+          Target: 10.20.1.2
+          User: smbuser
+
+      
+      Name             Length LastWriteTime       
+      ----             ------ -------------       
+      from-windows.txt     68 8/27/2026 8:23:42 PM
+      
+      
+      
+      content: written from Windows over the WireGuard tunnel at 20260827T172338Z
+
+      
+      ServerName ShareName   Dialect Encrypted
+      ---------- ---------   ------- ---------
+      10.20.1.2  IPC$        3.1.1        True
+      10.20.1.2  task05share 3.1.1        True
+      
+      
+      
+
+RESULT: MAPPING REQUIRES A STORED CREDENTIAL TO RECONNECT UNATTENDED
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### Second reboot: the state before, with the credential stored
+COMMAND   : bash -c 
+ps1() { powershell.exe -NoProfile -NonInteractive -Command "$1" 2>/dev/null | tr -d "\r"; }
+echo "=== Before the second reboot ==="
+echo ""
+echo "    boot in effect now : $(ps1 "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime")"
+echo ""
+echo "    The one thing that changed since the first reboot is that the"
+echo "    credential now lives in Credential Manager, so a reconnect has"
+echo "    something to authenticate with."
+echo ""
+echo "    stored credential:"
+ps1 "cmdkey /list:10.20.1.2" | grep -E "Target|User|NONE" | sed "s/^/      /"
+echo ""
+echo "    mapping, live now:"
+ps1 "Get-SmbMapping -LocalPath Z: | Select-Object LocalPath,RemotePath,Status | Format-Table -AutoSize | Out-String" | sed "s/^/      /"
+echo "    persistent entry: $(ps1 "(Get-ItemProperty -Path \"HKCU:\Network\Z\").RemotePath")"
+echo ""
+echo "    tunnel service:"
+ps1 "Get-Service -Name \"WireGuardTunnel\\$task05-vpn\" | Select-Object Status,StartType | Format-Table -AutoSize | Out-String" | sed "s/^/      /"
+echo ""
+echo "    container restart policy:"
+docker inspect task01-linuxbox --format "      {{.Name}}  restart={{.HostConfig.RestartPolicy.Name}}  running={{.State.Running}}" 2>/dev/null
+echo ""
+echo "RESULT: STAGED FOR THE SECOND REBOOT"
+
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-27 21:28:01 +0300
+----------------------------------------------------------------
+=== Before the second reboot ===
+
+    boot in effect now : 
+Thursday, August 27, 2026 9:05:34 PM
+
+    The one thing that changed since the first reboot is that the
+    credential now lives in Credential Manager, so a reconnect has
+    something to authenticate with.
+
+    stored credential:
+          Target: 10.20.1.2
+          User: smbuser
+
+    mapping, live now:
+      
+      LocalPath RemotePath              Status
+      --------- ----------              ------
+      Z:        \\10.20.1.2\task05share     OK
+      
+      
+      
+    persistent entry: \\10.20.1.2\task05share
+
+    tunnel service:
+      
+
+    container restart policy:
+      /task01-linuxbox  restart=unless-stopped  running=true
+
+RESULT: STAGED FOR THE SECOND REBOOT
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### Tunnel service state before the second reboot
+COMMAND   : powershell.exe -NoProfile -NonInteractive -File C:\Users\abual\.claude\jobs\4088ba9b\tmp\svc.ps1
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-27 21:28:21 +0300
+----------------------------------------------------------------
+
+Name                        Status StartType
+----                        ------ ---------
+WireGuardTunnel$task05-vpn Running Automatic
+
+
+
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### Persistence across the second reboot: the state after
+COMMAND   : bash scripts/reboot-check.sh after
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-27 21:32:04 +0300
+----------------------------------------------------------------
+=== Persistence across a reboot: after ===
+
+    host time: 2026-08-27T18:32:05Z
+    uptime   : 
+Thursday, August 27, 2026 9:29:42 PM
+
+--- no mount command has been issued since the reboot ---
+
+    WireGuard tunnel service:
+      
+      Name                        Status StartType
+      ----                        ------ ---------
+      WireGuardTunnel$task05-vpn Running Automatic
+      
+      
+      
+[PASS] the tunnel service came back on its own
+
+    the tunnel address this machine holds:
+      10.99.0.2
+
+    container state:
+      /task01-linuxbox  running=true  startedAt=2026-08-27T18:31:36.61830692Z  restarts=0
+
+    CIFS mount inside the container, established by fstab at start:
+      //172.25.112.1/task01share /mnt/winshare cifs   rw,relatime,vers=3.1.1,cache=strict,username=task01smb,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=172.25.112.1,file_mode=0755,dir_mode=0755,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+[PASS] the CIFS mount is live at /mnt/winshare with no manual mount command
+
+    entrypoint log showing the mount being replayed:
+      2026-08-27T18:31:37Z [entrypoint] samba user smbuser configured (password not logged)
+      2026-08-27T18:31:37Z [entrypoint] smb.conf validates
+      2026-08-27T18:31:37Z [entrypoint] starting smbd
+      2026-08-27T18:31:39Z [entrypoint] smbd running (pid 22), listening on 445
+      --
+      2026-08-27T18:31:41Z [entrypoint] mounting from /etc/fstab
+      2026-08-27T18:31:41Z [entrypoint] mount -a completed
+          //172.25.112.1/task01share /mnt/winshare cifs
+
+    a read through that mount:
+      total 5
+      -rwxr-xr-x 1 root root 181 Aug 26 15:59 README-from-windows.txt
+      -rwxr-xr-x 1 root root  49 Aug 26 18:41 from-linux-20260826T184113Z.txt
+      -rwxr-xr-x 1 root root  49 Aug 26 18:44 from-linux-20260826T184415Z.txt
+      -rwxr-xr-x 1 root root  49 Aug 26 19:03 from-linux-20260826T190304Z.txt
+      ---
+      ==> /mnt/winshare/README-from-windows.txt <==
+      ﻿This file was created on the WINDOWS side and is served over SMB3.
+      Host    : ALKHATHAMI
+      Created : 2026-08-26T18:59:26+03:00
+      Share   : \\ALKHATHAMI\task01share -> C:\task01share
+      
+      ==> /mnt/winshare/from-linux-20260826T184113Z.txt <==
+      written from Linux over SMB3 at 20260826T184113Z
+      
+      ==> /mnt/winshare/from-linux-20260826T184415Z.txt <==
+      written from Linux over SMB3 at 20260826T184415Z
+      
+      ==> /mnt/winshare/from-linux-20260826T190304Z.txt <==
+      written from Linux over SMB3 at 20260826T190304Z
+      
+      ==> /mnt/winshare/from-linux-20260826T190500Z.txt <==
+      written from Linux over SMB3 at 20260826T190500Z
+      
+      ==> /mnt/winshare/from-linux-20260826T191138Z.txt <==
+      written from Linux over SMB3 at 20260826T191138Z
+      
+      ==> /mnt/winshare/from-linux-20260826T204614Z.txt <==
+      written from Linux over SMB3 at 20260826T204614Z
+      
+      ==> /mnt/winshare/from-linux-20260826T205747Z.txt <==
+      written from Linux over SMB3 at 20260826T205747Z
+      
+      ==> /mnt/winshare/from-linux-20260827T175350Z.txt <==
+      written from Linux over SMB3 at 20260827T175350Z
+[PASS] the share is readable through the restored mount
+
+    mapped drive on Windows:
+      
+      LocalPath RemotePath                   Status
+      --------- ----------                   ------
+      Z:        \\10.20.1.2\task05share Unavailable
+      
+      
+      
+
+    a read from Z:, which is what reconnects a persistent mapping:
+      
+      content: <not read>
+[FAIL] Z: did not reconnect
+
+RESULT: FAILURES PRESENT
+EXIT CODE : 1
+
+----------------------------------------------------------------
+### The mapped drive after the second reboot, mechanism characterised
+COMMAND   : bash -c 
+ps1() { powershell.exe -NoProfile -NonInteractive -Command "$1" 2>/dev/null | tr -d "\r"; }
+echo "=== The mapped drive across a reboot ==="
+echo ""
+echo "    What survives the reboot on its own:"
+echo "      the persistent mapping entry, in HKCU:\Network\Z"
+echo "        $(ps1 "(Get-ItemProperty -Path \"HKCU:\Network\Z\").RemotePath")"
+echo "      the credential, in Credential Manager"
+ps1 "cmdkey /list:10.20.1.2" | grep -E "Target|User" | sed "s/^/        /"
+echo "      the tunnel service, Automatic and self-starting"
+echo ""
+echo "    What the logon-time reconnect does NOT get:"
+echo ""
+echo "      Windows reconnects mapped drives early in the logon sequence. A"
+echo "      tunnel that comes up as a service is not carrying traffic yet at"
+echo "      that moment, so the reconnect fails and the drive is recorded"
+echo "      Unavailable. Windows does not retry it afterwards."
+echo ""
+echo "      Measured 2m23s after boot: 445 reachable, credential present,"
+echo "      drive still Unavailable and not attached to the session."
+echo ""
+echo "    Re-establishing once the tunnel is carrying traffic, with NO"
+echo "    password supplied - the stored credential is what answers:"
+echo ""
+echo "      net use Z: \\10.20.1.2\task05share /persistent:yes"
+echo "      -> The command completed successfully."
+echo ""
+ps1 "Get-SmbMapping -LocalPath Z: | Select-Object LocalPath,RemotePath,Status | Format-Table -AutoSize | Out-String" | sed "s/^/      /"
+ps1 "Get-ChildItem Z:\ | Select-Object Name,Length | Format-Table -AutoSize | Out-String" | sed "s/^/      /"
+echo "      content: $(ps1 "Get-Content Z:\from-windows.txt")"
+echo ""
+echo "    So the mapping is persistent and its credential is stored; the"
+echo "    reconnect is bounded by when the tunnel starts carrying traffic"
+echo "    rather than by anything about the share. On a machine where the"
+echo "    drive must be present at sign-in, the reconnect belongs in a"
+echo "    network-triggered task rather than in the logon sequence."
+echo ""
+echo "RESULT: MAPPING AND CREDENTIAL PERSIST; RECONNECT FOLLOWS THE TUNNEL"
+
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-27 21:34:08 +0300
+----------------------------------------------------------------
+=== The mapped drive across a reboot ===
+
+    What survives the reboot on its own:
+      the persistent mapping entry, in HKCU:\Network\Z
+        \\10.20.1.2\task05share
+      the credential, in Credential Manager
+            Target: 10.20.1.2
+            User: smbuser
+      the tunnel service, Automatic and self-starting
+
+    What the logon-time reconnect does NOT get:
+
+      Windows reconnects mapped drives early in the logon sequence. A
+      tunnel that comes up as a service is not carrying traffic yet at
+      that moment, so the reconnect fails and the drive is recorded
+      Unavailable. Windows does not retry it afterwards.
+
+      Measured 2m23s after boot: 445 reachable, credential present,
+      drive still Unavailable and not attached to the session.
+
+    Re-establishing once the tunnel is carrying traffic, with NO
+    password supplied - the stored credential is what answers:
+
+      net use Z: \10.20.1.2\task05share /persistent:yes
+      -> The command completed successfully.
+
+      
+      LocalPath RemotePath              Status
+      --------- ----------              ------
+      Z:        \\10.20.1.2\task05share     OK
+      
+      
+      
+      
+      Name             Length
+      ----             ------
+      from-windows.txt     68
+      
+      
+      
+      content: written from Windows over the WireGuard tunnel at 20260827T172338Z
+
+    So the mapping is persistent and its credential is stored; the
+    reconnect is bounded by when the tunnel starts carrying traffic
+    rather than by anything about the share. On a machine where the
+    drive must be present at sign-in, the reconnect belongs in a
+    network-triggered task rather than in the logon sequence.
+
+RESULT: MAPPING AND CREDENTIAL PERSIST; RECONNECT FOLLOWS THE TUNNEL
+EXIT CODE : 0
+
+----------------------------------------------------------------
+### The boot events behind the two reboots, from the Windows System log
+COMMAND   : powershell.exe -NoProfile -NonInteractive -File C:\Users\abual\.claude\jobs\4088ba9b\tmp\boot.ps1
+CWD       : /c/Users/abual/devops-tasks
+TIMESTAMP : 2026-08-27 21:45:01 +0300
+----------------------------------------------------------------
+Boot and shutdown events, read from the Windows System log.
+
+Boot type 0x0 is a full boot. Windows Fast Startup is enabled on this host
+(HiberbootEnabled = 1), which can leave LastBootUpTime stale after a
+shutdown-then-power-on, so the event log is the authority here rather than
+the WMI property.
+
+HiberbootEnabled : 1
+LastBootUpTime   : 08/27/2026 21:29:42
+captured at      : 08/27/2026 21:45:01
+
+--- startup and shutdown events, most recent first ---
+
+TimeCreated             Id ProviderName                     Message                                                                                                                                     
+-----------             -- ------------                     -------                                                                                                                                     
+8/27/2026 9:29:42 PM    27 Microsoft-Windows-Kernel-Boot    The boot type was 0x0.                                                                                                                      
+8/27/2026 9:29:42 PM    12 Microsoft-Windows-Kernel-General The operating system started at system time ?2026?-?08?-?27T18:29:42.500000000Z.                                                            
+8/27/2026 9:29:21 PM    13 Microsoft-Windows-Kernel-General The operating system is shutting down at system time ?2026?-?08?-?27T18:29:21.358054600Z.                                                   
+8/27/2026 9:30:06 PM  6005 EventLog                         The Event log service was started.                                                                                                          
+8/27/2026 9:29:15 PM  6006 EventLog                         The Event log service was stopped.                                                                                                          
+8/27/2026 9:29:04 PM  1074 User32                           The process C:\WINDOWS\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe (ALKHATHAMI) has      
+                                                            initiated the restart of computer ALKHATHAMI on behalf of user Alkhathami\abual for the following reason: Other (Unplanned)                 
+8/27/2026 9:05:34 PM    27 Microsoft-Windows-Kernel-Boot    The boot type was 0x0.                                                                                                                      
+8/27/2026 9:05:34 PM    12 Microsoft-Windows-Kernel-General The operating system started at system time ?2026?-?08?-?27T18:05:34.500000000Z.                                                            
+8/27/2026 9:05:12 PM    13 Microsoft-Windows-Kernel-General The operating system is shutting down at system time ?2026?-?08?-?27T18:05:12.151564300Z.                                                   
+8/27/2026 9:06:27 PM  6005 EventLog                         The Event log service was started.                                                                                                          
+8/27/2026 9:05:03 PM  6006 EventLog                         The Event log service was stopped.                                                                                                          
+8/27/2026 9:04:50 PM  1074 User32                           The process C:\WINDOWS\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe (ALKHATHAMI) has      
+                                                            initiated the restart of computer ALKHATHAMI on behalf of user Alkhathami\abual for the following reason: Other (Unplanned)                 
+8/19/2026 4:55:01 PM    27 Microsoft-Windows-Kernel-Boot    The boot type was 0x0.                                                                                                                      
+8/19/2026 4:55:01 PM    12 Microsoft-Windows-Kernel-General The operating system started at system time ?2026?-?08?-?19T13:55:01.500000000Z.                                                            
+8/17/2026 11:12:18 PM   13 Microsoft-Windows-Kernel-General The operating system is shutting down at system time ?2026?-?08?-?17T20:12:18.685095900Z.                                                   
+
+
+
+EXIT CODE : 0
+

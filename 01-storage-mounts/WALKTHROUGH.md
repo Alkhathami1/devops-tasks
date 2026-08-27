@@ -35,8 +35,9 @@ identity model is the argument.
 
 **"Persistent across reboots"** means the mount must be reconstructible from
 system configuration alone, with no operator typing a mount command and no
-password on that command line. The check that proves it is `mount -a` with no
-arguments after an unmount: if the entry is complete, the share comes back.
+password on that command line. The check that proves it is a reboot: restart
+the machine, type nothing, and see whether the share is mounted when it returns.
+That was run twice, and §5.7 has the timings.
 
 **"Monitor the mount and disk performance"** is two things needing different
 queries. Capacity is a gauge. Availability is the *absence* of a gauge, because
@@ -221,7 +222,7 @@ is the interface a Windows client has a route to.
 | `compose.yaml` | Both services, the named volumes, and the SMB password as a file secret |
 | `linuxbox/Dockerfile` | Debian 12 with cifs-utils, samba, xfsprogs, sysstat, fio; node_exporter v1.8.2 copied from the official image so it is version-pinned and needs no build-time network |
 | `linuxbox/smb.conf` | SMB3.1.1 floor and ceiling, `smb encrypt = required`, `server signing = mandatory`, netbios disabled, port 445 only |
-| `linuxbox/entrypoint.sh` | Creates the POSIX and Samba accounts from the file secret, starts `smbd`, starts the CIFS metrics loop, starts node_exporter with the diskstats exclusion overridden |
+| `linuxbox/entrypoint.sh` | Creates the POSIX and Samba accounts from the file secret, starts `smbd`, starts the CIFS metrics loop, starts node_exporter with the diskstats exclusion overridden, then runs `mount -a` so `/etc/fstab` is replayed at container start |
 | `linuxbox/cifs-metrics.sh` | Parses `/proc/fs/cifs/Stats` into Prometheus text format, written atomically via a temp file and `mv` |
 | `prometheus/prometheus.yml` | 5 s scrape and evaluation interval, so a drill can watch a state transition |
 | `prometheus/alerts.yml` | Ten rules in three groups: mount-availability, capacity, performance |
@@ -358,6 +359,15 @@ remount from their entries alone (`01-persistence.log`, `01-direction-a.log`).
 `x-systemd.automount` is present in the entry, syntactically correct, and
 accepted by `mount`; on a systemd host the generator turns it into an automount
 unit that mounts the share on first access.
+
+A container has no init to process `/etc/fstab`, so `entrypoint.sh` runs
+`mount -a` once `smbd` and node_exporter are up. That is the boot-time
+equivalent — the same `mount -a` a systemd host runs, at the same point in the
+lifecycle — and it is what makes the fstab entry and its `nofail` option carry
+weight rather than sit in a file nothing reads. `nofail` is also why the call is
+safe to make unconditionally: an entry whose server is unreachable is skipped
+instead of holding up start. Two reboots then drove that path for real, and
+§5.7 has what each one measured.
 
 ### 4.6 Show what `nofail` is for
 
@@ -588,7 +598,67 @@ from the Windows side:
         connectaddress=192.168.65.3
 ```
 
-### 5.7 The suite
+A Windows client mapping a Linux Samba share was carried through end to end on
+the Task 5 app tier rather than on this container. The client mapped
+`\\10.20.1.2\task05share` over the WireGuard tunnel and wrote `from-windows.txt`;
+the Linux server read that same file on its own filesystem, 68 bytes, without
+going through the client's mount. `Get-SmbConnection` reported dialect `3.1.1`
+with `Encrypted True`, and `smbstatus` on the server reported `SMB3_11` with
+`AES-128-GCM` encryption and `AES-128-GMAC` signing (`docs/evidence/05-vpn-smb.log`).
+The tier, the tunnel and the Samba configuration behind that run are described in
+`05-terraform-ansible/WALKTHROUGH.md`.
+
+### 5.7 Persistence across two reboots
+
+Source: `01-reboot.log`.
+
+The machine was restarted twice on 2026-08-27, and after each restart the
+Windows share was mounted at `/mnt/winshare` with no mount command issued. The
+`before` phase, captured at 20:54:58 +0300, recorded a machine still running the
+boot of 2026-08-19 16:55:01, the container under `restart=unless-stopped`, the
+tunnel service `Automatic` and `Running`, and the fstab entry that would be
+replayed. Each `after` phase read a different `LastBootUpTime` back out of
+`Win32_OperatingSystem`, which is what separates the two boots from one another
+and from the state before them.
+
+Both restarts were full boots rather than hybrid resumes, and the Windows System
+log is the source for that rather than `LastBootUpTime`, because Fast Startup is
+on here — the same capture reports `HiberbootEnabled : 1` — and the WMI property
+can survive a shutdown-then-power-on unchanged. Each `Microsoft-Windows-Kernel-Boot`
+event 27 below follows a `Kernel-General` event 13 "operating system is shutting
+down" and carries an event 12 "operating system started" at the same second, with
+a `User32` event 1074 recording the restart initiated by user `Alkhathami\abual`.
+
+| What | First reboot | Second reboot |
+|---|---|---|
+| `LastBootUpTime` after the restart | 2026-08-27 21:05:34 +0300 | 2026-08-27 21:29:42 +0300 |
+| `Kernel-Boot` event 27 | `The boot type was 0x0.` at 8/27/2026 9:05:34 PM | `The boot type was 0x0.` at 8/27/2026 9:29:42 PM |
+| `Kernel-General` event 13 ahead of it | 8/27/2026 9:05:12 PM | 8/27/2026 9:29:21 PM |
+| Container `StartedAt` | `2026-08-27T18:22:45.947652965Z` | `2026-08-27T18:31:36.61830692Z` |
+| `RestartCount` | 0 | 0 |
+| Entrypoint `mount -a completed` | 18:22:50Z | 18:31:41Z |
+| CIFS mount found by `findmnt` | `//172.25.112.1/task01share /mnt/winshare cifs` | same |
+| Options on that mount | `vers=3.1.1`, `seal` | `vers=3.1.1`, `seal` |
+| Tunnel service | `Running`, `Automatic` | `Running`, `Automatic` |
+
+The second reboot is the one with a clean derivation. `LastBootUpTime` 21:29:42
++0300 is 18:29:42Z in the log's own frame — the same capture stamps host time as
+2026-08-27T18:32:05Z at 21:32:04 +0300 — the container reports `StartedAt`
+18:31:36Z, and the entrypoint logged `mount -a completed` at 18:31:41Z. That is
+1m54s from boot to container start, then 5 s to the mount, 1m59s end to end.
+Those are host-side wall clocks around Docker starting the container, not the
+duration of the mount call itself.
+
+The read through the restored mount returned `README-from-windows.txt`, 181
+bytes, authored on the Windows side, and eight `from-linux-*.txt` files, each
+still carrying the line it was written with — `written from Linux over SMB3 at
+20260827T175350Z` for the most recent. Identical on both runs. Both `after`
+phases recorded `[PASS] the CIFS mount is live at /mnt/winshare with no manual
+mount command` and `[PASS] the share is readable through the restored mount`,
+and both recorded `[FAIL] Z: did not reconnect` for the mapped drive on the
+Windows side, which is the behavior §6.11 measures.
+
+### 5.8 The suite
 
 `scripts/verify.sh` runs all eight checks end to end: 8 checks, 0 failures,
 from 23:57:07 to 00:04:02 (`01-verify-suite.log`).
@@ -858,7 +928,7 @@ in place the sequence produces the change (`01-xfs.log`):
 
 2.0G to 4.0G, online, with the filesystem mounted and in use the whole time.
 
-### 6.10 Two environment facts that shape everything above
+### 6.10 Three environment facts that shape everything above
 
 **A container cannot load a kernel module.** `modprobe cifs` inside the
 container fails with `can't change directory to '/lib/modules'`, and `cifs` is
@@ -875,6 +945,48 @@ negotiated, no session authenticated, no encryption applied and no ACL
 translated. Mounting a Windows volume on Linux in the sense the requirement
 means is `mount -t cifs //host/share`, which is what produces `Dialect 0x311`
 in the kernel's own record.
+
+**A CRLF checkout breaks a shebang and blames the interpreter.** These scripts
+are authored on Windows and executed inside Linux containers. A file checked out
+with CRLF turns `#!/usr/bin/env bash` into `#!/usr/bin/env bash\r`, the kernel
+looks for an interpreter named `bash\r`, and the failure reads as a missing
+binary rather than as a line ending — so the search starts at the wrong layer.
+The repository's `.gitattributes` pins `*.sh`, `*.j2`, `*.bash`, `Dockerfile`,
+`*.yml`, `*.yaml`, `*.conf`, `*.tf` and `*.sql` to `text eol=lf`, which puts the
+guarantee in the repository rather than in whatever `core.autocrlf` a given
+clone happens to carry. `docs/evidence/*.log` is marked `-text` in the same
+file, so bytes that were captured are never normalized on checkout.
+
+### 6.11 A mapped drive over a VPN reconnects on the tunnel's clock
+
+Drive Z: — `\\10.20.1.2\task05share`, the Task 5 app tier across the WireGuard
+tunnel — was recorded `Unavailable` in both `after` captures, and everything it
+needed to come back had survived the reboot. The persistent mapping entry was in
+`HKCU:\Network\Z`, reading `\\10.20.1.2\task05share`. The credential was in
+Credential Manager: `cmdkey /list:10.20.1.2` returned `Target: 10.20.1.2`,
+`User: smbuser`. The tunnel service was `Running` and the machine held 10.99.0.2
+(`01-reboot.log`).
+
+What the logon-time reconnect misses is timing. Windows reconnects mapped drives
+early in the logon sequence, and a tunnel that comes up as a service is not
+carrying traffic yet at that moment. The reconnect fails, the drive is recorded
+`Unavailable`, and Windows does not retry it afterwards. Measured 2m23s after
+boot: `Test-NetConnection 10.20.1.2:445` returned True, the credential was
+present, and the drive was still `Unavailable` and not attached to the session.
+
+Re-establishing it once the tunnel was carrying traffic needed no password on the
+command line — the stored credential is what answered. `Get-SmbMapping` then
+reported `Z: \\10.20.1.2\task05share OK`, and `from-windows.txt` read back at 68
+bytes: `written from Windows over the WireGuard tunnel at 20260827T172338Z`.
+
+The first reboot stopped one step earlier, and the difference is instructive. Its
+capture records no stored credential for 10.20.1.2 at that point: `net use` with
+an inline password authenticates that logon session and stores nothing, so
+Windows held a mapping with nothing to present. Storing the credential settles
+that half. The timing is what remains, and it says where the reconnect belongs.
+On a machine where the drive has to be present at sign-in, the reconnect goes in
+a task triggered by the network coming up, which fires when the path exists,
+rather than in the logon sequence, which fires whether it does or not.
 
 ---
 
@@ -924,6 +1036,13 @@ elapse.
 ./scripts/direction-b.sh   # the Linux SMB server and the Windows mapping procedure
 ```
 
+Persistence across a real reboot is captured on both sides of it:
+
+```bash
+./scripts/reboot-check.sh before   # what is configured to survive; then restart
+./scripts/reboot-check.sh after    # what came back, issuing no mount command
+```
+
 `direction-a.sh` needs the Windows share to exist. Everything else is
 self-contained.
 
@@ -953,4 +1072,5 @@ and `Get-NetFirewallRule`.
 | `docs/evidence/01-monitoring.log` | diskstats, iostat, fio, node_exporter series, CIFS counters, live Prometheus queries |
 | `docs/evidence/01-alerts.log` | The SLO, promtool, and three alerts driven inactive → pending → firing → inactive |
 | `docs/evidence/01-direction-b.log` | Samba serving SMB 3.1.1 with encryption required, namespace measurements, mapping procedure |
+| `docs/evidence/01-reboot.log` | Two reboots: the state before each, the container and the CIFS mount after, and how the mapped drive behaves at logon |
 | `docs/evidence/01-verify-suite.log` | All eight checks in one run |

@@ -1,0 +1,114 @@
+---
+# Samba on the app tier. The share is reachable from the WireGuard tunnel and
+# from nowhere else: this host holds no public address, and the only firewall
+# rule admitting 445 names the bastion.
+
+- name: Install Samba
+  ansible.builtin.apt:
+    name:
+      - samba
+      - samba-common-bin
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the Samba service account
+  ansible.builtin.user:
+    name: "{{ samba_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+    state: present
+
+- name: Create the share directory
+  ansible.builtin.file:
+    path: "{{ samba_share_path }}"
+    state: directory
+    owner: "{{ samba_user }}"
+    group: "{{ samba_user }}"
+    mode: "0775"
+
+# The password is generated on the host. It is never templated from the control
+# node, never printed, and never leaves this machine except through the
+# credential file below, which is read by root only.
+- name: Generate a Samba password on the host, once
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      umask 077
+      head -c 18 /dev/urandom | base64 | tr -d '\n=+/' | cut -c1-16 > {{ samba_credential_file }}.pw
+    executable: /bin/bash
+    creates: "{{ samba_credential_file }}.pw"
+
+- name: Lock the generated password file down
+  ansible.builtin.file:
+    path: "{{ samba_credential_file }}.pw"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Read the generated password
+  ansible.builtin.slurp:
+    src: "{{ samba_credential_file }}.pw"
+  register: samba_pw_raw
+  no_log: true
+
+# Idempotency is checked against the condition itself - is this account in the
+# Samba passdb - rather than against a file. passdb.tdb is created by the
+# package at install time, so a `creates:` guard on it skips this task on the
+# very first run and leaves the account without a Samba password.
+- name: Check whether the account is already in the Samba passdb
+  ansible.builtin.command:
+    cmd: pdbedit -L
+  register: samba_passdb
+  changed_when: false
+  failed_when: false
+
+- name: Set the Samba password for the account
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      printf '%s\n%s\n' "{{ samba_pw_raw.content | b64decode | trim }}" "{{ samba_pw_raw.content | b64decode | trim }}" \
+        | smbpasswd -s -a {{ samba_user }}
+      smbpasswd -e {{ samba_user }}
+    executable: /bin/bash
+  when: samba_user not in samba_passdb.stdout
+  no_log: true
+
+# A mount-style credentials file, mode 0600, in the same shape the Task 01
+# client uses. It is written for the operator to read over SSH; it is not a
+# transport for the password.
+- name: Write the credentials file, owner-readable only
+  ansible.builtin.copy:
+    dest: "{{ samba_credential_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      username={{ samba_user }}
+      password={{ samba_pw_raw.content | b64decode | trim }}
+      domain=WORKGROUP
+  no_log: true
+
+- name: Configure Samba
+  ansible.builtin.template:
+    src: smb.conf.j2
+    dest: /etc/samba/smb.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "testparm -s %s"
+  notify: restart smbd
+
+- name: Enable and start smbd
+  ansible.builtin.service:
+    name: smbd
+    state: started
+    enabled: true
+
+- name: Stop nmbd, since NetBIOS is disabled
+  ansible.builtin.service:
+    name: nmbd
+    state: stopped
+    enabled: false
+  failed_when: false

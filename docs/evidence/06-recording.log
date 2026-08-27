@@ -1,0 +1,51 @@
+﻿----------------------------------------------------------------
+### The OBS screen recording, trimmed losslessly to the streaming window
+COMMAND   : bash scripts/trim-recording.sh
+CWD       : /c/Users/abual/devops-tasks/06-streaming
+TIMESTAMP : 2026-08-27 22:23:03 +0300
+----------------------------------------------------------------
+=== The OBS screen recording ===
+
+    OBS recorded locally while it streamed. The recording is trimmed to the
+    streaming window with a stream copy - no re-encode - and remuxed to mp4.
+    It lives outside the repository and is not tracked; it ships as a
+    release asset on the tag.
+
+--- as OBS wrote it ---
+      codec_name=h264
+      codec_type=video
+      width=1920
+      height=1080
+      r_frame_rate=60/1
+      codec_name=aac
+      codec_type=audio
+      sample_rate=48000
+      channels=2
+      r_frame_rate=0/0
+      format_name=matroska,webm
+      duration=336.618000
+      size=513154423
+
+--- after the lossless trim and remux ---
+      codec_name=h264
+      codec_type=video
+      width=1920
+      height=1080
+      r_frame_rate=60/1
+      codec_name=aac
+      codec_type=audio
+      sample_rate=48000
+      channels=2
+      r_frame_rate=0/0
+      format_name=mov,mp4,m4a,3gp,3g2,mj2
+      duration=335.304000
+      size=513457606
+
+    requested offset : 1.356 s
+    measured removed : 1.314 s (keyframe-aligned)
+
+    The codecs are unchanged either side of the trim, which is what a
+    stream copy means: the same h264 and aac bitstreams in a different
+    container, with the lead-in before the RTMP connection removed.
+EXIT CODE : 0
+

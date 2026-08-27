@@ -2,7 +2,7 @@
 ### Post-destroy verification against AWS listings, per resource class
 COMMAND   : bash scripts/teardown-check.sh
 CWD       : /c/Users/abual/devops-tasks/06-streaming
-TIMESTAMP : 2026-08-26 23:44:48 +0300
+TIMESTAMP : 2026-08-27 20:50:45 +0300
 ----------------------------------------------------------------
 === Post-destroy check: region eu-central-1 ===
 

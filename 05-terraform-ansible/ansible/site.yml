@@ -27,6 +27,7 @@
   become: true
   roles:
     - app
+    - samba
 
 - name: Public tier - reverse proxy
   hosts: nginx

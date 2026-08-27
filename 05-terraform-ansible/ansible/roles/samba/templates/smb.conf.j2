@@ -1,0 +1,46 @@
+# Samba on the app tier, serving one share to clients arriving over the tunnel.
+#
+# The protocol floor and the encryption requirement mirror the Task 01 server:
+# SMB 3.1.1 at both ends, encryption required rather than negotiated, signing
+# mandatory, and NetBIOS disabled so the only way in is 445.
+#
+# Encryption is required here even though the traffic already crosses a
+# WireGuard tunnel. The tunnel protects the path between the client and the
+# bastion; the hop from the bastion to this host crosses the VPC peering in
+# clear. Requiring SMB3 encryption closes that segment, and it also means the
+# share is not weaker if it is ever reached by another route.
+
+[global]
+   workgroup = WORKGROUP
+   server string = Task05 app-tier SMB server
+   security = user
+   map to guest = never
+
+   server min protocol = SMB3_11
+   server max protocol = SMB3_11
+   client min protocol = SMB3_11
+   smb encrypt = required
+   server signing = mandatory
+
+   disable netbios = yes
+   smb ports = 445
+
+   # Bind to the private interface only. There is no public address on this
+   # host, so this is belt and braces rather than the control itself.
+   bind interfaces only = yes
+   interfaces = lo {{ ansible_default_ipv4.interface }}
+
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+   logging = file
+
+[{{ samba_share_name }}]
+   comment = Task 05 app-tier share, reachable over the WireGuard tunnel
+   path = {{ samba_share_path }}
+   browseable = yes
+   read only = no
+   valid users = {{ samba_user }}
+   force user = {{ samba_user }}
+   create mask = 0664
+   directory mask = 0775
+   smb encrypt = required

@@ -42,6 +42,8 @@ non-transitivity, at the center of the design.
 tiers hold no public address, so the tunnel is the operator's path to the
 estate. I read this as: the tunnel terminates in the public tier on a bastion,
 and the routes it advertises are the ranges the bastion can actually deliver to.
+Access is a claim until something is used over it, so the app tier also exports
+an SMB share that has no path to it except the tunnel.
 
 **"Ansible configuration" means the servers are configured by Ansible, not by
 startup scripts.** Terraform creates the machines and the network; Ansible
@@ -392,7 +394,7 @@ Addresses are from `05-architecture.log`.
 | `terraform/versions.tf` | Provider pin (`hashicorp/google ~> 6.0`, resolved to 6.50.0), `required_version >= 1.5`, the provider block, and the state reasoning |
 | `terraform/variables.tf` | The CIDR plan with its derivation, machine shape, image, SSH user and key, `admin_source_cidr`, and the label set applied to everything |
 | `terraform/network.tf` | Three VPCs, three subnets, four peering resources, two Cloud Routers, two Cloud NAT gateways |
-| `terraform/firewall.tf` | Four service accounts and ten firewall rules |
+| `terraform/firewall.tf` | Four service accounts and the tier rules, including the SMB rule measured in 5.4 |
 | `terraform/compute.tf` | Four instances, the shared metadata block, `can_ip_forward` on the bastion |
 | `terraform/outputs.tf` | Addresses, the CIDR plan, network names, and a single `inventory` object that the Ansible inventory generator reads |
 
@@ -401,7 +403,7 @@ Addresses are from `05-architecture.log`.
 private and public address, so `scripts/inventory.sh` is one read rather than
 six.
 
-The resource count comes out at 32, itemized:
+`05-plan.log` records the plan it captured at 32 resources, itemized:
 
 | Class | Count |
 |---|---|
@@ -415,6 +417,10 @@ The resource count comes out at 32, itemized:
 | Instances | 4 |
 | **Total** | **32** |
 
+`firewall.tf` carries one rule beyond that capture: the SMB rule described in
+6.13, which admits 445 to the app tier. It is read back from GCP's own listing at
+the end of `05-vpn-smb.log`, and 5.4 records the shape it holds in the project.
+
 ### 3.3 The Ansible tree
 
 `ansible/site.yml` runs five plays top to bottom, and the ordering is the
@@ -425,7 +431,7 @@ to use it, and the app has to be listening before nginx is asked to proxy to it.
 |---|---|---|
 | Baseline every host | `all` | `common` |
 | Database tier | `dbs_tier` | `db` |
-| Application tier | `apps_tier` | `app` |
+| Application tier | `apps_tier` | `app`, then `samba` |
 | Public tier — reverse proxy | `nginx` | `nginx` |
 | Public tier — WireGuard VPN | `bastion` | `wireguard` |
 
@@ -454,6 +460,25 @@ waits for port 8080 to accept connections. The database password lives in
 file is world-readable and `systemctl show` prints `Environment=` values to any
 user.
 
+**`samba`** installs Samba on the same host and exports one share,
+`task05share`, from `/srv/task05share`. It creates `smbuser` as a system account
+with `/usr/sbin/nologin`, generates that account's Samba password on the app host
+itself from `/dev/urandom`, writes it to a root-owned file at mode 0600, and adds
+it to the Samba passdb. The password is never templated from the control node and
+never printed by a task — `no_log: true` covers every task that touches it. The
+share configuration is the Task 1 server standard: SMB 3.1.1 as both floor and
+ceiling, `smb encrypt = required` rather than negotiated, `server signing =
+mandatory`, NetBIOS disabled, and 445 as the only port. The template is deployed
+with `validate: "testparm -s %s"`, so a configuration Samba would reject never
+reaches `/etc/samba/smb.conf`.
+
+Encryption is required even though the traffic already crosses a WireGuard
+tunnel, and the template carries the reason: the tunnel protects the path from
+the client to the bastion, while the hop from the bastion across the VPC peering
+to the app tier is a separate segment. Requiring SMB3 encryption closes that
+segment as well, and it means the share is no weaker if it is ever reached by
+another route.
+
 **`nginx`** installs nginx and openssl, generates a self-signed certificate
 guarded by `creates:`, deploys the site configuration, removes the default site,
 **validates with `nginx -t` before reloading**, and ensures the service is
@@ -473,6 +498,7 @@ reads back `wg show wg0`.
 | `scripts/inventory.sh` | Reads `terraform output -json inventory` and writes `ansible/inventory/hosts.yml`, including the ProxyJump chains |
 | `scripts/ansible-run.sh` | Runs the playbook in the control-node container. `--check-idempotent` runs it twice and asserts the second run changed nothing |
 | `scripts/verify.sh` | The architecture verification suite — 17 checks against the live estate |
+| `scripts/vpn-smb-check.sh` | Four phases — `outside`, `inside`, `client`, `server` — that measure what the tunnel reaches from both ends of it |
 | `scripts/orphan-check.sh` | Post-destroy verification against GCP's own listings, per resource class |
 
 ### 3.5 The dynamic inventory and its ProxyJump chains
@@ -535,9 +561,16 @@ live estate — the happy path, reachability from outside, the peering
 non-transitivity test with its control, GCP's own routing table, the WireGuard
 server state, and the public-address inventory.
 
-**9. Destroy.** `terraform destroy -auto-approve`.
+**9. Measure the tunnel from both ends.** `scripts/vpn-smb-check.sh outside`
+runs first, from the Windows host, while no tunnel exists — that phase is the
+control for everything after it. The client tunnel is then raised, and `inside`,
+`client` and `server` run in turn: the handshake and transfer counters as the
+bastion sees them, the mapped drive as Windows sees it, and the file the client
+wrote read on the server's own filesystem.
 
-**10. Confirm nothing remains.** `scripts/orphan-check.sh` queries GCP per
+**10. Destroy.** `terraform destroy -auto-approve`.
+
+**11. Confirm nothing remains.** `scripts/orphan-check.sh` queries GCP per
 resource class, because a destroy reporting success is a claim about Terraform's
 state file rather than about the project.
 
@@ -637,34 +670,16 @@ task05-nginx    task05-public-vpc  10.10.1.2   136.113.192.221
 
 Two of four instances hold a public address, and both are in the public tier.
 
-### 5.3 The VPN, as measured on the server
+### 5.3 The VPN, from the client through to the app tier
 
-WireGuard is deployed on the bastion by Ansible with a generated keypair. The
-interface is up on `10.99.0.1`, the client peer is configured, and IP forwarding
-is on. From `05-architecture.log`:
+A WireGuard client on the Windows host raised the tunnel, and the app tier
+answered through it. The same address answered nothing from the same machine
+before the tunnel was up.
 
-```
-interface: wg0
-  public key: 772i5mdcakzmrZaqegOhtrKpGmEq8lT3MjkuBKauqTs=
-  private key: (hidden)
-  listening port: 51820
-
-peer: l+10MQep0AsEjVBQDepobecq95yV3u2ISKTuenq2RCQ=
-  allowed ips: 10.99.0.2/32
-```
-
-| Measurement | Value | Evidence |
-|---|---|---|
-| Interface state | `wg0` up, listening on 51820 | `05-architecture.log` |
-| Peer | one, `allowed ips 10.99.0.2/32` | `05-architecture.log` |
-| Kernel forwarding | `net.ipv4.ip_forward = 1` | `05-architecture.log` |
-| Platform forwarding | `can_ip_forward = true` on the bastion | `05-plan.log` line 420 |
-| Path opened to the tunnel | UDP 51820 only, on `task05-public-allow-bastion` | `05-plan.log` |
-| Response to an unauthenticated UDP probe | nothing returned | `05-architecture.log` |
-
-The client configuration is generated on the bastion with the routable ranges
-and the server's public key. `05-architecture.log` prints it with the private
-key redacted:
+The server half is deployed by the `wireguard` role, which generates the keypair
+on the bastion and writes the operator's client configuration with the routable
+ranges and the server's public key. `05-architecture.log` prints that
+configuration with the private key redacted:
 
 ```
 [Interface]
@@ -678,7 +693,136 @@ AllowedIPs = 10.10.0.0/16, 10.20.0.0/16, 10.99.0.0/24
 PersistentKeepalive = 25
 ```
 
-### 5.4 Ansible idempotency
+The two captures name different server keys. The role generates the pair on the
+bastion under a `creates:` guard, so the key follows the host that made it rather
+than the configuration, and the tunnel reading below — taken on 2026-08-27 —
+carries the key its own bastion held.
+
+**The control ran first.** `scripts/vpn-smb-check.sh outside`, captured in
+`05-vpn-smb.log` at 2026-08-27 19:53:12, asks the Windows host three questions
+before any tunnel exists:
+
+```
+      WireGuard adapter: none present
+      next hop for 10.20.1.2: none
+      Test-NetConnection 10.20.1.2:445 -> False
+```
+
+"Reachable over the VPN" is only a claim until the same address is shown
+unreachable without it, which is why that phase runs before the tunnel is raised
+rather than after. `10.20.1.2` is an RFC1918 address, this machine holds no
+route to it, and the rule admitting 445 in the apps VPC names the bastion, so a
+packet arriving by any other path would not match it either.
+
+**With the tunnel up**, the `inside` phase at 20:22:30 measures both ends. On
+Windows the adapter `task05-vpn`, described by the driver as `WireGuard Tunnel`,
+reports `Up` and holds `10.99.0.2`. On the bastion, `wg show` gives the server's
+own view of that peer — quoted whole, with the client's public endpoint masked
+by the capture's redaction path:
+
+```
+interface: wg0
+  public key: Q6rGOafpGUKdsuBYLczo1vhJfqpYXpoQbrBvzxaX7mA=
+  private key: (hidden)
+  listening port: 51820
+
+peer: HPZaTEyMnwslcxQ/h0nxFVdLiPpPuNUtKQsISyPcVi8=
+  endpoint: <PUBLIC-IP>:52869
+  allowed ips: 10.99.0.2/32
+  latest handshake: 51 seconds ago
+  transfer: 900 B received, 764 B sent
+```
+
+A handshake alone would only prove the two ends agree on keys. The transfer
+counters are what show payload moving: 900 B in and 764 B out, both nonzero,
+read on the server side of the tunnel. Through it, the app tier answers ICMP and
+accepts a TCP connection on 445. Those are two consecutive sections of the log,
+brought into one block here with the PowerShell table's blank spacer lines
+removed:
+
+```
+      Address   ResponseTime StatusCode
+      -------   ------------ ----------
+      10.20.1.2          214          0
+      10.20.1.2          211          0
+      10.20.1.2          212          0
+      10.20.1.2          271          0
+
+      Test-NetConnection 10.20.1.2:445 -> True
+```
+
+The client half of the tunnel is installed as a Windows service named
+`WireGuardTunnel$task05-vpn`, with StartType `Automatic`. `docs/evidence/01-reboot.log`
+reads that service back `Running` after a reboot; the reboot itself belongs to
+Task 1 and is written up there.
+
+| Measurement | Value | Evidence |
+|---|---|---|
+| WireGuard adapter, before the tunnel | none present | `05-vpn-smb.log`, outside phase |
+| Next hop for `10.20.1.2`, before the tunnel | none | `05-vpn-smb.log`, outside phase |
+| `Test-NetConnection 10.20.1.2:445`, before the tunnel | False | `05-vpn-smb.log`, outside phase |
+| Client adapter, tunnel up | `task05-vpn`, `WireGuard Tunnel`, `Up` | `05-vpn-smb.log`, inside phase |
+| Tunnel address held by the client | `10.99.0.2` | `05-vpn-smb.log`, inside phase |
+| Latest handshake, read on the bastion | 51 seconds ago, epoch 1787851304 | `05-vpn-smb.log`, inside phase |
+| Transfer counters for the peer, on the bastion | 900 B received, 764 B sent | `05-vpn-smb.log`, inside phase |
+| ICMP to `10.20.1.2` through the tunnel | 214, 211, 212, 271 ms | `05-vpn-smb.log`, inside phase |
+| `Test-NetConnection 10.20.1.2:445`, through the tunnel | True | `05-vpn-smb.log`, inside phase |
+| Kernel forwarding on the bastion | `net.ipv4.ip_forward = 1` | `05-architecture.log` |
+| Platform forwarding | `can_ip_forward = true` on the bastion | `05-plan.log` line 420 |
+| Path opened to the tunnel | UDP 51820 only, on `task05-public-allow-bastion` | `05-plan.log` |
+| Response to an unauthenticated UDP probe | nothing returned | `05-architecture.log` |
+
+The 211-271 ms figures are the round trip from the Windows client out over the
+internet to the bastion, through the tunnel, and across the VPC peering into the
+apps VPC. They measure the whole path from where an operator sits, not the
+peering hop, and not anything inside the region.
+
+### 5.4 The app-tier share, reached through the tunnel
+
+Samba on the app tier serves one share, `task05share`, and a Windows client
+mapped it over the tunnel. The role that installs and configures it is described
+in 3.3; what follows is what the two ends of the connection measured.
+
+The client mapped the share as `Z:` and wrote a file to it, read back in the
+`client` phase at 20:24:39. The interesting read is the one the server did on its
+own filesystem seventeen seconds later, which never went through the client's
+mount. `05-vpn-smb.log`, server phase at 20:24:56:
+
+```
+      -rw-rw-r-- 1 smbuser smbuser 68 Aug 27 17:23 from-windows.txt
+      ---
+      == /srv/task05share/from-windows.txt
+      written from Windows over the WireGuard tunnel at 20260827T172338Z
+```
+
+The client phase of the same log lists that file at 68 bytes with the same
+contents. Same byte count, same string, two filesystems, one write.
+
+| Measurement | Value | Evidence |
+|---|---|---|
+| Mapping | `Z:` → `\\10.20.1.2\task05share`, Status OK, 1 connection | `05-vpn-smb.log`, client phase |
+| Persistence of the mapping | `HKCU:\Network\Z` → `\\10.20.1.2\task05share` | `05-vpn-smb.log`, client phase |
+| File written from Windows | `from-windows.txt`, 68 bytes | `05-vpn-smb.log`, client phase |
+| The same file read on the server | 68 bytes, owner `smbuser`, contents identical | `05-vpn-smb.log`, server phase |
+| Dialect and encryption, client side | `3.1.1`, `Encrypted True` | `05-vpn-smb.log`, client phase |
+| Dialect, encryption and signing, server side | `SMB3_11`, `AES-128-GCM`, `AES-128-GMAC` | `05-vpn-smb.log`, server phase |
+| Protocol floor in `smb.conf` | `server min/max protocol = SMB3_11`, `client min protocol = SMB3_11` | `05-vpn-smb.log`, server phase |
+| Encryption and signing settings | `smb encrypt = required`, `server signing = mandatory` | `05-vpn-smb.log`, server phase |
+| Ports | `smb ports = 445` | `05-vpn-smb.log`, server phase |
+| Samba account | `smbuser:994:` in `pdbedit -L` | `05-vpn-smb.log`, server phase |
+| Credentials file | `-rw------- 1 root root 60 /etc/samba/task05-credentials` | `05-vpn-smb.log`, server phase |
+| Share directory | `drwxrwxr-x 2 smbuser smbuser /srv/task05share` | `05-vpn-smb.log`, server phase |
+| Firewall rule admitting 445 | `task05-apps-allow-smb-from-vpn`, `task05-apps-vpc`, source `10.10.1.3/32`, port 445, target the `task05-app` service account | `05-vpn-smb.log` |
+
+The two dialect readings come from different places and that is deliberate.
+`Get-SmbConnection` needs elevation, so the client-side line — `3.1.1`,
+`Encrypted True` — is output captured from an elevated PowerShell and read back
+by the check. The server-side line comes from `smbstatus` on the app tier over
+SSH and owes nothing to the client's report. Both name SMB 3.1.1 with encryption
+in force, and `smbstatus` adds the ciphers the client view does not carry:
+`AES-128-GCM` for encryption, `AES-128-GMAC` for signing.
+
+### 5.5 Ansible idempotency
 
 `05-ansible-idempotency.log` runs the playbook twice in one invocation. The
 second run's recap:
@@ -710,12 +854,16 @@ which is stable across runs for a given host and database. A real deployment
 sources that value from a secret manager; the deterministic derivation is what
 makes the idempotency claim checkable here.
 
-### 5.5 Teardown
+The Samba password task asks the same question in a different form, and the
+answer for it is not a `creates:` guard. 6.14 has that one.
+
+### 5.6 Teardown
 
 `terraform destroy` reporting success is a statement about the state file.
 `scripts/orphan-check.sh` asks GCP instead, per resource class, and splits the
-classes by whether they outlive the instance they were attached to.
-`05-destroy-orphan-check.log`:
+classes by whether they outlive the instance they were attached to. The check
+was re-run after the tunnel and share work, at 2026-08-27 21:37:39 +0300, and
+`05-destroy-orphan-check.log` holds that run:
 
 ```
 Classes that survive instance deletion:
@@ -821,10 +969,23 @@ Inside `verify.sh` that turned "list the routes in the public VPC" into "no
 routes found", which the check read as a failure and reported confidently. Two
 checks failed that way against an estate that was working correctly.
 
-Every gcloud call now runs through `env -u MSYS_NO_PATHCONV`. The generalizable
-part is the diagnosis: when a check fails, the first question is whether the
-command that produced its input actually ran. Empty output and negative output
-are indistinguishable to a `grep`.
+Every gcloud call now runs through `env -u MSYS_NO_PATHCONV`. `05-vpn-smb.log`
+holds both readings of one command, side by side. The firewall section of the
+server phase printed nothing, because that call sends stderr to `/dev/null`. Run
+on its own, the same describe printed `project:` with no value and then the
+underlying cause, exiting 2:
+
+```
+C:\Users\abual\AppData\Local\Microsoft\WindowsApps\python3.11.exe: can't open file 'C:\\c\\Users\\abual\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\lib\\gcloud.py': [Errno 2] No such file or directory
+```
+
+The `C:\c\Users\...` prefix is the rewrite itself, visible in the error. Wrapped
+in `env -u MSYS_NO_PATHCONV`, the same command returned the project name and the
+rule.
+
+The generalizable part is the diagnosis: when a check fails, the first question
+is whether the command that produced its input actually ran. Empty output and
+negative output are indistinguishable to a `grep`.
 
 ### 6.5 A red check that means nothing is the same bug as a green one
 
@@ -941,8 +1102,11 @@ respectively.
 
 The symptom of either one missing is identical and points nowhere useful: the
 interface comes up, the handshake completes, and packets stop at the bastion.
-Both are now verified separately — the platform half from `05-plan.log` line
-420, the kernel half from `05-architecture.log`.
+Both are verified separately — the platform half from `05-plan.log` line 420, the
+kernel half from `05-architecture.log`. With both in place the packets go
+through: `05-vpn-smb.log` records the handshake, 900 B and 764 B across the peer
+in the two directions, and the app tier one hop past the bastion answering ICMP
+and TCP 445.
 
 ### 6.12 Teardown is checked per class, because the classes behave differently
 
@@ -961,13 +1125,83 @@ decision made against this check: a reserved address is the easiest of the five
 to leave behind, because releasing it is a separate action from deleting the
 instance it was attached to.
 
+### 6.13 A masquerading tunnel decides which address the firewall rule can name
+
+The rule admitting 445 to the app tier names `10.10.1.3/32` — the bastion's
+private address — and not the tunnel range. That is the rule's measured shape in
+`05-vpn-smb.log`, and it is the only shape that would match anything.
+
+WireGuard on the bastion masquerades tunnel traffic onto the bastion's own
+interface. It has to: the apps VPC holds no route back to `10.99.0.0/24`, so an
+unmasqueraded reply addressed to `10.99.0.2` would have nowhere to go. By the
+time a packet from the client reaches the app tier, its source address is the
+bastion's. A rule sourced on `10.99.0.0/24` would be accepted by GCP, would list
+cleanly, and would match no packet ever sent.
+
+`smbstatus -b` on the app tier settles the mechanism from the server's side. The
+server phase of `05-vpn-smb.log` carries the header and one session row; the
+encryption and signing columns to the right of it are cut here and reported in
+5.4:
+
+```
+PID     Username     Group        Machine                                   Protocol Version
+5119    smbuser      smbuser      10.10.1.3 (ipv4:10.10.1.3:60633)          SMB3_11
+```
+
+The client that wrote the file holds `10.99.0.2`. The session the server sees
+comes from `10.10.1.3`. The address in the rule is the address the server
+observes, and the way to learn it is the server's own session table rather than
+the client's idea of who it is.
+
+What makes the share reachable through the tunnel and by no other means is the
+absence of alternatives rather than this rule alone. The app tier carries no
+public address — `05-architecture.log` lists `task05-app` with a `NETWORK_IP`
+and no `NAT_IP` — and from outside the tunnel the Windows host found no next hop
+at all for `10.20.1.2`. There is no second path to filter.
+
+### 6.14 A guard has to test the condition, not a file something else creates
+
+Setting the Samba password is a run-once task, and a `creates:` guard on
+`/var/lib/samba/private/passdb.tdb` reads like the right way to make it one. The
+Samba package creates that file at install time. The guard is therefore satisfied
+before the task has ever run, the task skips on the very first pass, and the
+account is left with a Unix identity and no Samba password — a user that exists
+and cannot log in to the share. A skipped task reports `ok`, so nothing in the
+recap points at it.
+
+The role guards on the condition itself. `pdbedit -L` is read into a variable
+with `changed_when: false`, and the password task runs only when the account is
+absent from that list:
+
+```yaml
+when: samba_user not in samba_passdb.stdout
+```
+
+`roles/samba/tasks/main.yml` carries the reason beside it, so the next person to
+tighten that task does not reintroduce the file guard:
+
+```
+# Idempotency is checked against the condition itself - is this account in the
+# Samba passdb - rather than against a file. passdb.tdb is created by the
+# package at install time, so a `creates:` guard on it skips this task on the
+# very first run and leaves the account without a Samba password.
+```
+
+The server phase of `05-vpn-smb.log` shows the account where it needs to be:
+`pdbedit -L` returns `smbuser:994:`, and the session in `smbstatus` is
+authenticated as `smbuser`. The general shape is worth carrying past Ansible: a
+`creates:` guard asserts that the path exists if and only if the work was done.
+Any installer, package or sibling task that can produce the same path breaks that
+equivalence in the direction that stays quiet.
+
 ---
 
 ## 7. How to run it yourself
 
 Requirements on the host: Terraform 1.5 or later, the Google Cloud SDK
 authenticated against a project, Docker for the Ansible control node, and a
-POSIX shell. On Windows, run the shell scripts from Git Bash.
+POSIX shell. Step 10 also needs a WireGuard client on the operator's machine. On
+Windows, run the shell scripts from Git Bash.
 
 ```bash
 cd 05-terraform-ansible
@@ -1001,10 +1235,17 @@ docker build -t task05-ansible:1.0.0 ansible/
 # 9. Prove the architecture: 17 checks against the live estate.
 ./scripts/verify.sh
 
-# 10. Tear down.
+# 10. The tunnel and the share it reaches. Run `outside` before raising the
+#     client tunnel: that phase is the control for the three that follow.
+./scripts/vpn-smb-check.sh outside
+./scripts/vpn-smb-check.sh inside
+./scripts/vpn-smb-check.sh client
+./scripts/vpn-smb-check.sh server
+
+# 11. Tear down.
 cd terraform && terraform destroy -auto-approve && cd ..
 
-# 11. Confirm nothing remains, per resource class, against GCP's listings.
+# 12. Confirm nothing remains, per resource class, against GCP's listings.
 ./scripts/orphan-check.sh
 ```
 
@@ -1023,6 +1264,13 @@ Notes for a clean run:
 - **The verification suite is safe to re-run.** Each run inserts one row through
   the proxy and reads it back, so the `count` in the happy-path output grows by
   one each time.
+- **The client configuration comes off the bastion.** The `wireguard` role writes
+  it there at mode 0600; read it over SSH and import it into the WireGuard client
+  on the operator's machine. The Windows client names the adapter after the file
+  it imported, which is why the reading in 5.3 shows `task05-vpn`.
+- **The share password stays on the app host.** It is generated there and written
+  to `/etc/samba/task05-credentials`, root-owned at mode 0600. Read it over SSH
+  when mapping the drive; nothing in the repository carries it.
 - **`.tfstate` and `.ssh/` are gitignored**, and `scripts/audit.sh` at the
   repository root fails the build if either is ever tracked.
 
@@ -1033,4 +1281,5 @@ Notes for a clean run:
 | `docs/evidence/05-plan.log` | `scripts/plan.sh` | fmt, validate, and the full 32-resource plan |
 | `docs/evidence/05-ansible-idempotency.log` | `scripts/ansible-run.sh --check-idempotent` | both runs in full, and the summed verdict |
 | `docs/evidence/05-architecture.log` | `scripts/verify.sh` | 17 checks against the live estate |
+| `docs/evidence/05-vpn-smb.log` | `scripts/vpn-smb-check.sh`, four phases | the app tier before the tunnel, the tunnel measured at both ends, the mapped drive from Windows, the share read on the server, and the firewall rule read back from GCP |
 | `docs/evidence/05-destroy-orphan-check.log` | `scripts/orphan-check.sh` | nine resource classes queried against GCP after destroy |

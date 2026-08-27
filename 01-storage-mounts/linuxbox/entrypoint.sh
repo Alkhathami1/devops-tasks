@@ -97,4 +97,20 @@ fi
 log "protocol floor: $(testparm -s --parameter-name='server min protocol' 2>/dev/null | tail -1)"
 log "encryption    : $(testparm -s --parameter-name='smb encrypt' 2>/dev/null | tail -1)"
 
+# Mount everything fstab describes, at container start.
+#
+# A container has no init to process /etc/fstab, so this is the boot-time
+# equivalent: the same `mount -a` a systemd host runs, at the same point in the
+# lifecycle. It is what makes the fstab entry and its `nofail` option carry real
+# weight rather than being a file nothing reads. `nofail` is why this is safe to
+# run unconditionally - a share whose server is unreachable is skipped instead
+# of holding up start.
+log "mounting from /etc/fstab"
+if mount -a 2>&1 | sed 's/^/    /'; then
+    log "mount -a completed"
+else
+    log "mount -a returned non-zero; nofail entries are skipped rather than fatal"
+fi
+findmnt -t cifs,xfs -no SOURCE,TARGET,FSTYPE 2>/dev/null | sed 's/^/    /' || true
+
 exec "$@"

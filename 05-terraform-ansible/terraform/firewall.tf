@@ -185,6 +185,36 @@ resource "google_compute_firewall" "apps_allow_bastion_ssh" {
   target_service_accounts = [google_service_account.app.email]
 }
 
+# SMB to the app tier, reachable only through the tunnel.
+#
+# The source is the bastion's own address, and that is a measured choice rather
+# than a loose one. The WireGuard server masquerades tunnel traffic onto the
+# bastion's interface, because the apps VPC has no route back to 10.99.0.0/24
+# and an unmasqueraded reply would have nowhere to go. So by the time a packet
+# from the tunnel reaches the app tier, its source is the bastion, and a rule
+# written against the tunnel subnet would match nothing at all.
+#
+# What makes this "over the VPN and no other way" is the absence of alternatives
+# rather than this rule alone: the app tier holds no public address, the apps
+# VPC is peered only to public and dbs, and the bastion forwards on wg0 only.
+# An operator outside the tunnel has no route to 10.20.1.0/24 to try.
+resource "google_compute_firewall" "apps_allow_smb_from_vpn" {
+  name        = "task05-apps-allow-smb-from-vpn"
+  network     = google_compute_network.apps.name
+  description = "SMB to the app tier, reachable only through the tunnel."
+  direction   = "INGRESS"
+  priority    = 1000
+
+  allow {
+    protocol = "tcp"
+    ports    = ["445"]
+  }
+
+  source_ranges           = ["${google_compute_instance.bastion.network_interface[0].network_ip}/32"]
+  target_service_accounts = [google_service_account.app.email]
+}
+
+
 # ---------------------------------------------------------------------------
 # DBS TIER — the tightest rule in the design.
 # ---------------------------------------------------------------------------

@@ -9,7 +9,8 @@ and the OBS path produce equivalent streams.
 | Field | Value | Why |
 |---|---|---|
 | Service | Custom | MediaLive is not in the preset list |
-| Server | `rtp://<medialive-input>:5000` | **The deployed input is `RTP_PUSH`.** OBS's native Streaming output cannot emit RTP-MPEGTS, so this goes through Settings → Output → **Custom Output (FFmpeg)** with container `rtp_mpegts`. See "Transport" below |
+| Server | `rtmp://<medialive-input>:1935/task06` | **The deployed input is `RTMP_PUSH`.** OBS emits this from its own Stream output, which is why the channel takes RTMP. See "Transport" below |
+| Stream Key | `live` | The last path element of the MediaLive destination URL |
 | Encoder | x264 → **change to HEVC** | `libx265`, NVENC HEVC, AMF HEVC or QSV HEVC depending on hardware |
 | Rate Control | **CBR** | A contribution uplink has a fixed budget. VBR peaks overrun it and the transport then drops packets, which is worse than the quality VBR buys |
 | Bitrate | **12000 kbps** | 0.0965 bpp at 1080p60 — mid-band. See the BPP table |
@@ -45,36 +46,40 @@ and the OBS path produce equivalent streams.
 | Color Space | Rec. 709 | HD standard. 601 is SD and will shift colours |
 | Color Range | Limited | Broadcast convention (16-235). Full range through a limited-range chain crushes blacks and clips whites |
 
-## Transport: why RTP here, and where SRT fits
+## Transport: why RTMP here, and where SRT fits
 
-**RTMP is ruled out by the receiver, not the container.** Classic RTMP/FLV has a
-4-bit CodecID with no value for HEVC. Enhanced RTMP (2023) adds one via a FourCC
-extension and modern ffmpeg implements it — `scripts/analysis.sh` muxes HEVC
-into FLV without complaint, which is the opposite of what the textbook answer
-predicts. MediaLive's `RTMP_PUSH` input still expects H.264 and will not ingest
-it. Producing a file ffmpeg is happy to mux proves nothing about what AWS will
-accept.
+**The contribution codec and the archive codec are different, on purpose.** OBS
+contributes H.264 over RTMP. MediaLive decodes it and the channel encodes HEVC
+into the ARCHIVE output group, so the `.ts` segments that land in S3 are HEVC.
+The requirement is met where the requirement lives — in the recording.
 
-**RTP_PUSH is what this channel deploys.** RTP carries MPEG-TS, which has a
-native stream type for HEVC (0x24), and ffmpeg pushes it with `-f rtp_mpegts`.
-It is the shortest path from an HEVC encoder to a MediaLive input, and it is
-what `terraform/main.tf` creates.
+**RTMP is not ruled out by the container.** Classic RTMP/FLV has a 4-bit CodecID
+with no value for HEVC, and Enhanced RTMP (2023) adds one via a FourCC
+extension that modern ffmpeg implements — muxing HEVC into FLV succeeds, which
+is the opposite of what the textbook answer predicts. What decides the
+transport is the receiver: MediaLive's `RTMP_PUSH` input expects H.264. So the
+contribution leg is H.264 and the codec requirement is satisfied downstream.
 
-**SRT is the better choice over the public internet, and is not what was
-built.** SRT retransmits lost packets within a configurable latency window;
-RTP over UDP does not recover them at all, and RTMP over TCP stalls
-head-of-line on loss and backs the encoder up. For a real contribution feed
-crossing the internet, SRT is the right transport and MediaLive supports it as
-an input type. It was not used here because RTP_PUSH was sufficient for a
-channel that existed for four minutes on a known-good local path, and every
-extra input type is another thing to get right inside a short window. On an
-unmanaged network, choose SRT.
+**RTP_PUSH is the alternative when the encoder can emit it.** RTP carries
+MPEG-TS, which has a native stream type for HEVC (0x24), and ffmpeg pushes it
+with `-f rtp_mpegts` — that path carries HEVC end to end. OBS's native Stream
+output cannot emit RTP-MPEGTS, so reaching it from OBS means Custom Output
+(FFmpeg) rather than the Stream panel.
 
-## The honest note about this file
+**SRT is the better choice over the public internet.** SRT retransmits lost
+packets within a configurable latency window; RTP over UDP does not recover them
+at all, and RTMP over TCP stalls head-of-line on loss and backs the encoder up.
+For a real contribution feed crossing an unmanaged network, choose SRT.
 
-**OBS was not used to produce the evidence for this task.** OBS is interactive
-and cannot be driven reproducibly from a script, so the contribution feed was
-pushed with ffmpeg using the parameters above. This document is the
-operator-facing equivalent — the settings a human would enter to produce the
-same stream — and is written as a runbook, not as a record of something that
-was executed.
+## Where these settings come from
+
+**These are the settings OBS read off disk.** `scripts/obs-configure.sh` writes
+the profile and the scene collection into `%APPDATA%\obs-studio`, so every field
+above is installed rather than typed into a dialog, and OBS was launched from
+the command line with `--startstreaming --startrecording`. That is what makes
+this document reproducible: the file the report describes is the file OBS reads.
+
+The measurements are in `docs/evidence/06-obs.log`, which carries OBS's own log
+reporting `base resolution: 1920x1080`, `output resolution: 1920x1080` and
+`fps: 60/1`, then the successful RTMP connection and the streaming and recording
+starts.

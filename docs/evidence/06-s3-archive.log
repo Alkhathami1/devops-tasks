@@ -1,36 +1,59 @@
 ﻿----------------------------------------------------------------
-### S3 archive proof: segments listed, one downloaded, ffprobe on a MediaLive-produced file
-COMMAND   : ./scripts/verify-archive.sh
+### The OBS contribution archived to S3 by MediaLive, and probed
+COMMAND   : bash scripts/verify-archive.sh
 CWD       : /c/Users/abual/devops-tasks/06-streaming
-TIMESTAMP : 2026-08-26 20:14:58 +0300
+TIMESTAMP : 2026-08-27 20:49:26 +0300
 ----------------------------------------------------------------
 === S3 archive verification ===
-    bucket: task06-archive-b68825b7
+    bucket: task06-archive-ef6ec5fe
     prefix: live
 
 --- objects MediaLive wrote ---
-      2026-08-26 20:11:45   18.5 MiB live-hevc1080p60.000000.ts
-      2026-08-26 20:11:55   16.4 MiB live-hevc1080p60.000001.ts
-      2026-08-26 20:12:05   16.3 MiB live-hevc1080p60.000002.ts
-      2026-08-26 20:12:15   16.3 MiB live-hevc1080p60.000003.ts
-      2026-08-26 20:12:25   16.4 MiB live-hevc1080p60.000004.ts
-      2026-08-26 20:12:35   16.3 MiB live-hevc1080p60.000005.ts
-      2026-08-26 20:12:45   16.3 MiB live-hevc1080p60.000006.ts
-      2026-08-26 20:12:55   16.3 MiB live-hevc1080p60.000007.ts
-      2026-08-26 20:13:05   16.3 MiB live-hevc1080p60.000008.ts
-      2026-08-26 20:13:15   16.4 MiB live-hevc1080p60.000009.ts
-      2026-08-26 20:13:25   18.9 MiB live-hevc1080p60.000010.ts
-      2026-08-26 20:13:35   18.9 MiB live-hevc1080p60.000011.ts
-      2026-08-26 20:13:35    4.3 MiB live-hevc1080p60.000012.ts
+      2026-08-27 20:42:14   18.6 MiB live-hevc1080p60.000000.ts
+      2026-08-27 20:42:24   18.9 MiB live-hevc1080p60.000001.ts
+      2026-08-27 20:42:34   18.9 MiB live-hevc1080p60.000002.ts
+      2026-08-27 20:42:44   18.9 MiB live-hevc1080p60.000003.ts
+      2026-08-27 20:42:54   18.9 MiB live-hevc1080p60.000004.ts
+      2026-08-27 20:43:04   18.9 MiB live-hevc1080p60.000005.ts
+      2026-08-27 20:43:14   18.9 MiB live-hevc1080p60.000006.ts
+      2026-08-27 20:43:24   18.9 MiB live-hevc1080p60.000007.ts
+      2026-08-27 20:43:34   18.9 MiB live-hevc1080p60.000008.ts
+      2026-08-27 20:43:44   18.9 MiB live-hevc1080p60.000009.ts
+      2026-08-27 20:43:54   18.9 MiB live-hevc1080p60.000010.ts
+      2026-08-27 20:44:04   18.9 MiB live-hevc1080p60.000011.ts
+      2026-08-27 20:44:14   18.9 MiB live-hevc1080p60.000012.ts
+      2026-08-27 20:44:24   18.9 MiB live-hevc1080p60.000013.ts
+      2026-08-27 20:44:34   18.9 MiB live-hevc1080p60.000014.ts
+      2026-08-27 20:44:44   18.9 MiB live-hevc1080p60.000015.ts
+      2026-08-27 20:44:54   18.9 MiB live-hevc1080p60.000016.ts
+      2026-08-27 20:45:04   18.9 MiB live-hevc1080p60.000017.ts
+      2026-08-27 20:45:14   18.9 MiB live-hevc1080p60.000018.ts
+      2026-08-27 20:45:24   18.9 MiB live-hevc1080p60.000019.ts
+      2026-08-27 20:45:34   18.9 MiB live-hevc1080p60.000020.ts
+      2026-08-27 20:45:44   18.9 MiB live-hevc1080p60.000021.ts
+      2026-08-27 20:45:54   18.9 MiB live-hevc1080p60.000022.ts
+      2026-08-27 20:46:04   18.9 MiB live-hevc1080p60.000023.ts
+      2026-08-27 20:46:14   18.9 MiB live-hevc1080p60.000024.ts
+      2026-08-27 20:46:24   18.9 MiB live-hevc1080p60.000025.ts
+      2026-08-27 20:46:34   18.9 MiB live-hevc1080p60.000026.ts
+      2026-08-27 20:46:44   18.9 MiB live-hevc1080p60.000027.ts
+      2026-08-27 20:46:54   18.9 MiB live-hevc1080p60.000028.ts
+      2026-08-27 20:47:04   18.9 MiB live-hevc1080p60.000029.ts
+      2026-08-27 20:47:14   18.9 MiB live-hevc1080p60.000030.ts
+      2026-08-27 20:47:24   18.9 MiB live-hevc1080p60.000031.ts
+      2026-08-27 20:47:34   18.9 MiB live-hevc1080p60.000032.ts
+      2026-08-27 20:47:44   18.9 MiB live-hevc1080p60.000033.ts
+      2026-08-27 20:47:54   18.9 MiB live-hevc1080p60.000034.ts
+      2026-08-27 20:47:56    6.9 MiB live-hevc1080p60.000035.ts
 
-       object count: 13
-[PASS] MediaLive wrote 13 object(s) to S3
-       .ts segment count: 13
+       object count: 36
+[PASS] MediaLive wrote 36 object(s) to S3
+       .ts segment count: 36
 [PASS] the archive is .ts, satisfying the container requirement
 
 --- downloading one segment for inspection ---
        key : live-hevc1080p60.000000.ts
-       size: 19451044 bytes
+       size: 19451232 bytes
        downloaded to from-medialive.ts
 
 --- ffprobe on the MEDIALIVE-PRODUCED file ---
@@ -39,7 +62,7 @@ TIMESTAMP : 2026-08-26 20:14:58 +0300
 
       Input #0, mpegts, from 'C:/Users/abual/devops-tasks/06-streaming/out/from-medialive.ts':
         Duration: 00:00:10.01, start: 2.000000, bitrate: 15552 kb/s
-        Stream #0:0[0x1e1]: Video: hevc (Main) ([36][0][0][0] / 0x0024), yuv420p(tv), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 90k tbn, start 2.033333
+        Stream #0:0[0x1e1]: Video: hevc (Main) ([36][0][0][0] / 0x0024), yuv420p(tv, bt709), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 90k tbn, start 2.033333
         Stream #0:1[0x1e2](und): Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 192 kb/s, start 2.000000
 
       video codec            hevc
@@ -47,13 +70,13 @@ TIMESTAMP : 2026-08-26 20:14:58 +0300
       audio codec            aac
       container              mpegts
       duration               10.005333 s
-      measured bitrate       15552541 bps
+      measured bitrate       15552691 bps
 
 [PASS] MediaLive produced HEVC
 [PASS] resolution 1920x1080 meets Full HD
 [PASS] audio is AAC
 [PASS] container is MPEG-TS
-[PASS] measured segment bitrate 15552541 bps is consistent with a 12 Mbps target
+[PASS] measured segment bitrate 15552691 bps is consistent with a 12 Mbps target
 
 RESULT: S3 ARCHIVE VERIFIED
 EXIT CODE : 0

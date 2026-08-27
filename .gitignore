@@ -10,6 +10,23 @@ smbcredentials
 *-sa-key.json
 wg-*.conf
 
+# These four shapes were kept out of the repository by living outside it, which
+# is a property of where a file was written rather than a rule. `credentials*`
+# anchors at the start of a name and so misses smb-credentials.txt, and
+# `wg-*.conf` misses both task05-vpn.conf and a client config named for its
+# peer. A WireGuard client config or a service-account key dropped into the
+# tree would have been committed.
+*-vpn.conf
+client*.conf
+*credentials*
+*credentials*.txt
+sa-key*.json
+
+# OBS writes the live ingest host and stream key into service.json. The other
+# files in configs/obs/ are encoder settings and are tracked deliberately, so
+# this one is named rather than the directory being excluded wholesale.
+service.json
+
 # SSH keypairs. The private half of an ed25519 key has no extension at all,
 # so *.pem / *.key / id_rsa miss it entirely - which is how a generated
 # task05_ed25519 turned up untracked-but-committable.
@@ -124,3 +141,11 @@ saved-plan
 # An SSH private key written outside .ssh/ under a name with no extension.
 **/deploy_key
 **/deploykey
+
+# Screen and screen-capture recordings. OBS writes .mkv by default, which the
+# media rules above did not cover, so a recording left at the repository root
+# would have been tracked.
+*.mkv
+*.mov
+*.webm
+*.flv

@@ -1,0 +1,10 @@
+{
+    "bitrate": 12000,
+    "keyint_sec": 2,
+    "rate_control": "CBR",
+    "preset": "medium",
+    "profile": "main",
+    "tune": "",
+    "bf": 3,
+    "x264opts": ""
+}

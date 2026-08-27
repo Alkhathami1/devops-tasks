@@ -2,11 +2,14 @@
 
 Six infrastructure tasks, each built and then run against a real runtime.
 
-**Start with [`REPORT.pdf`](REPORT.pdf)** — 19 pages, about 20 minutes. Also
+**Start with [`REPORT.pdf`](REPORT.pdf)** — 20 pages, about 20 minutes. Also
 available as [`REPORT.docx`](REPORT.docx).
 
 **Depth per task** lives in that task's `WALKTHROUGH.md`: the full reasoning,
 the complete steps, the extended findings.
+
+**A screen recording** of the Task 6 stream — OBS contributing to MediaLive while
+the archive lands in S3 — is attached to the tagged release.
 
 **Re-run anything** with [`REPRODUCING.md`](REPRODUCING.md) — one block to bring
 each task up, one to verify it, with the expected output named.

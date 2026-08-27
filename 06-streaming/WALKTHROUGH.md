@@ -27,11 +27,16 @@ The requirement, in the requester's words:
 
 Four readings shaped the build.
 
-**There are two encoders in this chain, and the requirement applies to both.**
-A contribution encoder produces the feed that travels to AWS; MediaLive's own
-encoder produces the archive. Both were configured for 1080p60 HEVC at 12 Mbps,
-and both were measured — the local one with ffprobe against the file it wrote,
-the cloud one with ffprobe against a segment pulled back out of S3.
+**There are two encoders in this chain, and the codec requirement lands on the
+second.** OBS Studio produces the contribution feed that travels to AWS;
+MediaLive's own encoder produces the archive. Both run at 1920x1080, 60 fps and
+12 Mbps CBR. OBS contributes H.264, because MediaLive's RTMP input expects
+H.264, and the channel encodes HEVC into the ARCHIVE output group — so the `.ts`
+segments that land in S3, which is what the task asks to record, are HEVC.
+Section 2.8 works through why the transport decides that split. A third encode,
+libx265 driven by ffmpeg on a synthetic source, is the local measurement bench
+in Phase 1: the same operating point, probed field by field, reproducible from a
+clone.
 
 **"At least" makes these floors, and a floor has to be measured on the
 artifact.** Asking ffmpeg for `-b:v 12M` and then reporting 12 Mbps proves the
@@ -45,11 +50,12 @@ invitation to compute the whole surface — several resolutions, several frame
 rates, several bitrates — rather than to compute the one number the requirement
 already names.
 
-**"Document every step" includes the steps a human takes.** The contribution
-encoder is documented field by field as an operator runbook in
-`configs/obs-settings.md`, written against the input type the channel actually
-deploys, so the person entering those values is configuring the pipeline that
-exists.
+**"Document every step" includes the encoder a human would otherwise click
+through.** OBS was configured from files rather than from its interface:
+`scripts/obs-configure.sh` installs a profile and a scene collection where OBS
+reads them, and `scripts/obs-evidence.sh` prints those same files back and then
+quotes what OBS logged while it ran. The encoder settings this document
+describes are the settings OBS read off disk.
 
 ---
 
@@ -80,13 +86,13 @@ bit while the visible return on it falls off.
 
 ### 2.2 HEVC, and measuring what it actually buys
 
-The requirement names HEVC, so HEVC is what both encoders produce. That settles
-the choice and leaves an open question worth answering: how much does it buy at
-this operating point?
+The requirement names HEVC, so HEVC is what the archive carries and what the
+local encode produces. That settles the choice and leaves an open question worth
+answering: how much does it buy at this operating point?
 
 I encoded the same source at the same bitrate with the same preset through
 libx265 and libx264 and scored both against a common reference with VMAF. The
-result at 12 Mbps is in 5.4 and it does not match the figure the codec is
+result at 12 Mbps is in 5.3 and it does not match the figure the codec is
 usually sold on. Running it at a second, much lower bitrate is what turned a
 confusing number into a usable one.
 
@@ -109,7 +115,8 @@ link budget before the buffer pulls it back.
 
 MediaLive: `rate_control_mode = "CBR"` with `max_bitrate = var.video_bitrate`
 and `buf_size = var.video_bitrate * 2` — the same shape, expressed in the
-provider's schema.
+provider's schema. OBS: `"rate_control": "CBR"` at `"bitrate": 12000` in the
+profile's `streamEncoder.json`, printed back in `06-obs.log`.
 
 ### 2.4 A fixed 2-second GOP
 
@@ -177,7 +184,19 @@ continuously by a live encoder and possibly cut off mid-write, TS is the safer
 choice — and it is what MediaLive's ARCHIVE output group writes, for the same
 reasons.
 
-### 2.8 RTP_PUSH for the contribution input
+### 2.8 RTMP_PUSH for the contribution input, and where the codec requirement is met
+
+The deployed input is `RTMP_PUSH`, and the contribution leg is therefore H.264.
+OBS speaks RTMP natively from its own Stream output — `scripts/obs-configure.sh`
+writes a `service.json` of type `rtmp_custom`, splitting the MediaLive URL into
+a server and a stream key — and MediaLive's RTMP input expects H.264. The
+channel decodes that feed and encodes HEVC into the ARCHIVE output group, so the
+`.ts` segments in S3 are HEVC.
+
+That is the one place to state it plainly: **the codec requirement is met at the
+deliverable rather than on the wire.** The task asks to record the stream to S3
+in HEVC, and the recorded artifact is HEVC, confirmed by ffprobe on a segment
+pulled back out of the bucket (5.8).
 
 The received wisdom is that RTMP cannot carry HEVC. I wrote the test expecting a
 mux failure and got the opposite: **the mux succeeded.** From `06-analysis.log`:
@@ -194,23 +213,24 @@ where the claim comes from, and it was true for years. **Enhanced RTMP (2023)**
 adds HEVC, AV1 and VP9 through a FourCC extension, and ffmpeg 8.0.1 implements
 it.
 
-So the design argument had to be re-grounded. The deployed input is `RTP_PUSH`
-because **MediaLive's RTMP_PUSH input expects H.264 and does not ingest an
-Enhanced-RTMP HEVC feed** — a property of the receiver, checkable against the
-MediaLive API — rather than because the container cannot represent the codec,
-which this test disproved locally in one command.
+So the container is not what decides the transport here. The receiver is:
+**MediaLive's RTMP input expects H.264**, a property checkable against the
+MediaLive API, where the container claim was checkable against ffmpeg and came
+out false. The consequence is the H.264 contribution leg and the HEVC encode
+happening inside the channel.
 
-RTP carries MPEG-TS, MPEG-TS carries HEVC natively as stream type `0x24`, and
-ffmpeg pushes it with `-f rtp_mpegts`. That is the shortest path from an HEVC
-encoder to a MediaLive input.
-
-The rejected alternative and the reason: **SRT_CALLER**, MediaLive's SRT input
-type, in which MediaLive dials out to an SRT listener the operator runs.
-`RTP_PUSH` inverts the direction — the operator pushes — which is what suits an
-encoder behind NAT. SRT is the better transport over an unmanaged network,
-because it retransmits lost packets within a configurable latency window where
-RTP over UDP does not recover them at all; that argument is written into
-`configs/obs-settings.md` for anyone taking this past a known-good local path.
+The rejected alternatives and the reasons: **RTP_PUSH**, which carries MPEG-TS
+and would carry HEVC end to end as stream type `0x24`, rejected because OBS's
+Stream output does not emit RTP-MPEGTS — reaching RTP from OBS means configuring
+Custom Output (FFmpeg) instead, which puts ffmpeg back in the encoding path that
+the OBS profile was written to own, and the task names OBS as the encoder.
+**SRT_CALLER**, MediaLive's SRT input type, in which MediaLive dials out to an
+SRT listener the operator runs, rejected because it inverts the direction: an
+encoder behind NAT pushes, and a push input is what both RTMP_PUSH and RTP_PUSH
+give it. SRT remains the better transport over an unmanaged network, because it
+retransmits lost packets within a configurable latency window where RTP over UDP
+does not recover them at all and RTMP over TCP stalls head-of-line and backs the
+encoder up.
 
 ### 2.9 SINGLE_PIPELINE
 
@@ -266,26 +286,39 @@ channel starts, and prints the elapsed running time on every invocation, so the
 channel's state is a deliberate and visible thing rather than a side effect of
 an apply.
 
-### 2.13 ffmpeg as the contribution encoder, with the OBS runbook alongside
+### 2.13 OBS Studio as the contribution encoder, configured from files
 
-The contribution feed was pushed with ffmpeg: `-re -stream_loop -1 -c copy -f
-rtp_mpegts`, reusing the Phase 1 HEVC file directly. `-c copy` because the file
-is already HEVC at 12 Mbps with the right GOP structure — re-encoding at the
-push step would consume CPU and prove nothing about the pipeline. `-re` paces the
-file at real time; without it ffmpeg pushes as fast as it can read the file, and
-MediaLive's input buffer sees a feed running hundreds of times faster than wall
-clock.
+OBS Studio 32.2.1 is the contribution encoder, and it was configured
+programmatically. OBS keeps a profile as a directory holding `basic.ini`,
+`streamEncoder.json` and `recordEncoder.json`, keeps a scene collection as a
+single JSON file, and records which of each is active in four keys in
+`global.ini` — all under `%APPDATA%\obs-studio`. `scripts/obs-configure.sh`
+copies `configs/obs/` into those locations, appends the recording path, writes
+the `service.json` naming the MediaLive ingest, and sets the four keys. Nothing
+in that path goes through the interface.
 
-`configs/obs-settings.md` is the operator-facing equivalent: every OBS field
-with the reason for its value, matching the ffmpeg parameters in
-`scripts/encode.sh` so a human entering those values produces an equivalent
-stream. It is written against the RTP input this Terraform deploys, including
-the note that OBS's native Streaming output reaches RTP-MPEGTS through
-Settings → Output → Custom Output (FFmpeg) with container `rtp_mpegts`.
+The profile, as `06-obs.log` prints it back off disk: 1920x1080 base and output,
+`FPSCommon=60`, `ColorFormat=NV12`, `ColorSpace=709`, `ColorRange=Partial`,
+`SampleRate=48000` stereo, `Track1Bitrate=192`, advanced output mode with
+`Encoder=obs_x264`. The stream encoder JSON carries eight keys, six of them with
+values: `"bitrate": 12000`, `"rate_control": "CBR"`, `"keyint_sec": 2`,
+`"preset": "medium"`, `"profile": "main"`, `"bf": 3`, with `tune` and `x264opts`
+left empty. The scene collection is one scene, `Task06`, on a 1920x1080 canvas
+with a single `monitor_capture` source.
 
-Using ffmpeg for the evidence path is what makes the whole task reproducible
-from a clone: the source is synthetic (`testsrc2` plus `sine`), so the same
-commands produce the same artifacts on any machine with ffmpeg installed.
+Those values are the ones argued for in 2.1 through 2.6, expressed in OBS's own
+schema: CBR because a contribution uplink has a fixed budget, a 2-second
+keyframe interval because that sets the downstream segment granularity, `main`
+profile because the pipeline is 8-bit 4:2:0, three B-frames because this is
+contribution rather than interactive.
+
+The stream destination is written at configure time rather than committed,
+because it names a live ingest endpoint that exists only while the channel does.
+
+Phase 1 stays on ffmpeg with a synthetic source (`testsrc2` plus `sine`), which
+is what makes the encoder measurements, the BPP table and the VMAF comparison
+reproducible from a clone: the same commands produce the same artifacts on any
+machine with ffmpeg installed, with no capture hardware and no AWS account.
 
 ---
 
@@ -294,14 +327,15 @@ commands produce the same artifacts on any machine with ffmpeg installed.
 ### 3.1 The pipeline
 
 ```
-  ffmpeg  ──  HEVC 1080p60 12 Mbps in MPEG-TS, -re paced, -c copy
-     │
-     │  RTP push  (rtp_mpegts)
+  OBS Studio 32.2.1  ──  x264 CBR 12000 kbps, 1080p60, 2 s keyframes,
+     │                   AAC 192 kbps 48 kHz stereo
+     │  RTMP push  (Stream output, rtmp_custom service)
      ▼
-  MediaLive input  RTP_PUSH
+  MediaLive input  RTMP_PUSH
      │             guarded by an input security group
      ▼
   MediaLive channel  SINGLE_PIPELINE
+     │   decode: H.264 in
      │   video : H265, 12 Mbps, CBR, 2 s GOP, MAIN profile, 1920x1080@60
      │   audio : AAC-LC, 192 kbps, 48 kHz stereo
      │   mux   : M2TS, CBR at 13,192,000 bps
@@ -339,25 +373,27 @@ nothing and makes any bitrate target trivially achievable.
 | `aws_iam_role.medialive` | the role MediaLive assumes |
 | `aws_iam_role_policy.medialive_s3` | scoped inline policy |
 | `aws_medialive_input_security_group.this` | source range permitted to push |
-| `aws_medialive_input.this` | `RTP_PUSH` |
+| `aws_medialive_input.this` | `RTMP_PUSH`, with `stream_name = "task06/live"` |
 | `aws_medialive_channel.this` | the encoder and the ARCHIVE output group |
 
 `terraform/variables.tf` holds the numbers as variables — `video_bitrate`
 (12,000,000), `audio_bitrate` (192,000), `segment_seconds` (10),
-`archive_prefix` (`live`), `input_codec` (HEVC), `ingest_source_cidr` — so the
+`archive_prefix` (`live`), `input_codec`, `ingest_source_cidr` — so the
 channel's configuration and the arithmetic that justifies it stay in one place.
 
-`input_codec` deserves a note, because the name reads ambiguously: it describes
-the codec of the **contribution feed**, which MediaLive must decode on the way
-in. The channel always encodes HEVC on the way out, and that is set separately
-in `h265_settings`.
+`input_codec` deserves a note, because the name reads ambiguously: it feeds
+`input_specification.codec` and describes the codec of the **contribution
+feed**, which MediaLive must decode on the way in. The channel always encodes
+HEVC on the way out, and that is set separately in `h265_settings`.
 
 Supporting scripts:
 
 | Script | What it does |
 |---|---|
 | `scripts/channel.sh` | `start`, `stop`, `status`, `endpoints`. Stamps the start time and prints elapsed running time on every call |
-| `scripts/push-feed.sh` | Reads the RTP endpoint from `terraform output`, pushes the Phase 1 file with `-re -stream_loop -1 -c copy -f rtp_mpegts`, endpoint redacted on the way into any log |
+| `scripts/obs-configure.sh` | Installs the `configs/obs/` profile and scene collection under `%APPDATA%\obs-studio`, writes the `service.json` naming the ingest, and selects both in `global.ini` |
+| `scripts/obs-evidence.sh` | Reads the installed profile back off disk, resolves the OBS binary's version, and quotes the connection, streaming and recording lines from OBS's own log |
+| `scripts/trim-recording.sh` | Trims the screen recording to the streaming window with a stream copy, remuxes to mp4, probes either side and measures what the keyframe-aligned cut actually removed. Refuses to write inside the repository |
 | `scripts/verify-archive.sh` | Lists the objects MediaLive wrote, downloads one, and runs ffprobe on it |
 | `scripts/teardown-check.sh` | Queries AWS per resource class after destroy |
 
@@ -371,7 +407,7 @@ different layers:
 |---|---|---|---|
 | Video elementary stream | `h265_settings.bitrate` | 12,000,000 bps | `terraform/main.tf`, from `var.video_bitrate` |
 | Audio elementary stream | `aac_settings.bitrate` | 192,000 bps | `terraform/main.tf`, from `var.audio_bitrate` |
-| MPEG-TS multiplex | `m2ts_settings.bitrate`, `rate_mode = "CBR"` | `var.video_bitrate + var.audio_bitrate + 1000000` = **13,192,000 bps** | `terraform/main.tf:318` |
+| MPEG-TS multiplex | `m2ts_settings.bitrate`, `rate_mode = "CBR"` | `var.video_bitrate + var.audio_bitrate + 1000000` = **13,192,000 bps** | `terraform/main.tf:331` |
 
 The mux rate is video plus audio plus one megabit of headroom, held constant by
 padding with null packets. Section 6.4 works through what each layer measures
@@ -426,17 +462,24 @@ group and the channel. The channel is left IDLE.
 **9. Start the channel.** `scripts/channel.sh start` stamps the time, calls
 `start-channel`, and polls until the state reads RUNNING.
 
-**10. Push the feed.** `scripts/push-feed.sh` pushes the Phase 1 HEVC file to
-the RTP endpoint, paced with `-re` and looped so the channel has continuous
-input.
+**10. Configure OBS and start it.** `scripts/obs-configure.sh` takes the RTMP
+destination printed by `channel.sh endpoints`, installs the Task06 profile and
+scene collection under `%APPDATA%\obs-studio`, and writes the `service.json`
+that points OBS at the channel. OBS is then launched with `--startstreaming
+--startrecording`, so it connects, encodes and records without a click.
 
-**11. Verify the archive.** `scripts/verify-archive.sh` lists what MediaLive
+**11. Record what OBS did.** `scripts/obs-evidence.sh` prints the installed
+profile back off disk and quotes OBS's own log — the audio and video resets, the
+x264 preset and profile lines, the RTMP connection, `==== Streaming Start ====`
+and `==== Recording Start ====`.
+
+**12. Verify the archive.** `scripts/verify-archive.sh` lists what MediaLive
 wrote to S3, downloads one segment, and runs ffprobe on it.
 
-**12. Stop the channel.** `scripts/channel.sh stop` polls until the state reads
+**13. Stop the channel.** `scripts/channel.sh stop` polls until the state reads
 IDLE.
 
-**13. Destroy, then confirm.** `terraform destroy`, then
+**14. Destroy, then confirm.** `terraform destroy`, then
 `scripts/teardown-check.sh` against AWS's own listings per resource class.
 
 ---
@@ -550,67 +593,133 @@ Stream #0:0: Video: h264 (High), yuv420p(progressive), 1920x1080, 60 fps
 | Channel name | `task06-channel` | `06-terraform-plan.log` |
 | Archive prefix | `live` | `06-terraform-plan.log` |
 
-### 5.6 The archive, as written by MediaLive
+### 5.6 The contribution encoder, as OBS read it and logged it
 
-`06-s3-archive.log`, bucket `task06-archive-b68825b7`, prefix `live`:
+All figures from `06-obs.log`, captured 2026-08-27 20:51:38 +0300.
+
+| Measurement | Value |
+|---|---|
+| OBS Studio version | 32.2.1 |
+| Base resolution | 1920x1080 |
+| Output resolution | 1920x1080 |
+| Frame rate | 60/1 |
+| Stream encoder | `obs_x264`, 12000 kbps, CBR |
+| Keyframe interval | 2 s |
+| Preset / profile / B-frames | `medium` / `main` / 3 |
+| Audio | 48000 Hz stereo, `Track1Bitrate=192` |
+| Recording start | 20:41:58.966 |
+| RTMP connection successful | 20:42:00.322 |
+| Streaming start | 20:42:00.328 |
+
+The resolution and frame rate are OBS's own account of what it produced, not the
+profile read back:
 
 ```
-2026-08-26 20:11:45   18.5 MiB live-hevc1080p60.000000.ts
-2026-08-26 20:11:55   16.4 MiB live-hevc1080p60.000001.ts
-2026-08-26 20:12:05   16.3 MiB live-hevc1080p60.000002.ts
-2026-08-26 20:12:15   16.3 MiB live-hevc1080p60.000003.ts
-2026-08-26 20:12:25   16.4 MiB live-hevc1080p60.000004.ts
-2026-08-26 20:12:35   16.3 MiB live-hevc1080p60.000005.ts
-2026-08-26 20:12:45   16.3 MiB live-hevc1080p60.000006.ts
-2026-08-26 20:12:55   16.3 MiB live-hevc1080p60.000007.ts
-2026-08-26 20:13:05   16.3 MiB live-hevc1080p60.000008.ts
-2026-08-26 20:13:15   16.4 MiB live-hevc1080p60.000009.ts
-2026-08-26 20:13:25   18.9 MiB live-hevc1080p60.000010.ts
-2026-08-26 20:13:35   18.9 MiB live-hevc1080p60.000011.ts
-2026-08-26 20:13:35    4.3 MiB live-hevc1080p60.000012.ts
+20:41:56.119: 	base resolution:   1920x1080
+20:41:56.119: 	output resolution: 1920x1080
+20:41:56.119: 	fps:               60/1
+```
+
+and the connection, with the ingest address masked by the capture path:
+
+```
+20:41:58.915: [rtmp stream: 'adv_stream'] Connecting to RTMP URL rtmp://<PUBLIC-IP>:1935/task06...
+20:42:00.322: [rtmp stream: 'adv_stream'] Connection to rtmp://<PUBLIC-IP>:1935/task06 (<PUBLIC-IP>) successful
+20:42:00.328: ==== Streaming Start ===============================================
+```
+
+Three checks pass on that log: the RTMP connection, the streaming start and the
+recording start.
+
+OBS recorded the screen locally while it streamed — `==== Recording Start ====`
+at 20:41:58.966, 1.356 s before the RTMP connection completed. That recording is
+written outside the repository and is not tracked; it is published as a release
+asset on the tag. `scripts/trim-recording.sh` trims it to the streaming window
+with a stream copy and remuxes it to mp4, taking that 1.356 s as its default
+offset, and probes either side (`06-recording.log`):
+
+| Property | As OBS wrote it | After the trim and remux |
+|---|---|---|
+| Container | `matroska,webm` | `mov,mp4,m4a,3gp,3g2,mj2` |
+| Duration | 336.618000 s | 335.304000 s |
+| Size | 513,154,423 bytes | 513,457,606 bytes |
+| Video | `h264`, 1920x1080, `60/1` | `h264`, 1920x1080, `60/1` |
+| Audio | `aac`, 48000 Hz, stereo | `aac`, 48000 Hz, stereo |
+
+The codecs are identical on both sides, which is what a stream copy means: the
+same H.264 and AAC bitstreams in a different container, with the leading portion
+before the RTMP connection removed. The probed duration falls by 1.314 s rather
+than the 1.356 s asked for: with `-ss` ahead of `-i` and `-c copy`, ffmpeg seeks
+to the nearest preceding keyframe, so the cut lands on a GOP boundary and the
+script measures what was removed instead of restating what was requested. The
+byte count rises by 303,183 across the remux while carrying less content, and
+since the log records no re-encode, that difference belongs to the containers
+rather than to the picture.
+
+### 5.7 The archive, as written by MediaLive
+
+`06-s3-archive.log`, bucket `task06-archive-ef6ec5fe`, prefix `live`. The
+listing runs to 36 lines; below are the first three and the last two, with the
+31 between them elided:
+
+```
+2026-08-27 20:42:14   18.6 MiB live-hevc1080p60.000000.ts
+2026-08-27 20:42:24   18.9 MiB live-hevc1080p60.000001.ts
+2026-08-27 20:42:34   18.9 MiB live-hevc1080p60.000002.ts
+[ ... 000003 through 000033 elided: 18.9 MiB each, one every 10 s ... ]
+2026-08-27 20:47:54   18.9 MiB live-hevc1080p60.000034.ts
+2026-08-27 20:47:56    6.9 MiB live-hevc1080p60.000035.ts
 ```
 
 | Measurement | Value | Source |
 |---|---|---|
-| Object count | 13 | `06-s3-archive.log` |
-| Objects with a `.ts` extension | 13 | `06-s3-archive.log` |
-| Total size, summing the listed sizes | 207.6 MiB | derived from `06-s3-archive.log` |
-| Steady-state segments (000001–000009) | 16.3–16.4 MiB, 10 s apart | `06-s3-archive.log` |
-| Listing span | 20:11:45 to 20:13:35 | `06-s3-archive.log` |
-| Intervals of exactly 10 s | 11 of 12 | derived from the timestamps above |
+| Object count | 36 | `06-s3-archive.log` |
+| Objects with a `.ts` extension | 36 | `06-s3-archive.log` |
+| Total size, summing the listed sizes | 668.1 MiB | derived from `06-s3-archive.log` |
+| Steady-state segments (000001–000034) | 18.9 MiB each, 10 s apart | `06-s3-archive.log` |
+| Listing span | 20:42:14 to 20:47:56 | `06-s3-archive.log` |
+| Intervals of exactly 10 s | 34 of 35 | derived from the timestamps above |
 
-### 5.7 The segment AWS produced, probed
+Two checks pass on the listing: 36 objects written, and all 36 carrying a `.ts`
+extension. The first object appears at 20:42:14, 13.7 s after OBS logged
+`==== Streaming Start ====` at 20:42:00.328 — one 10-second rollover plus the
+write, reading the two logs against each other.
+
+### 5.8 The segment AWS produced, probed
 
 `scripts/verify-archive.sh` downloaded `live-hevc1080p60.000000.ts` —
-19,451,044 bytes — and probed it. From `06-s3-archive.log`:
+19,451,232 bytes — and probed it. From `06-s3-archive.log`, with the input path
+shortened to its basename and nothing else altered:
 
 ```
 Input #0, mpegts, from 'from-medialive.ts':
   Duration: 00:00:10.01, start: 2.000000, bitrate: 15552 kb/s
-  Stream #0:0[0x1e1]: Video: hevc (Main) ([36][0][0][0] / 0x0024),
-                      yuv420p(tv), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps
-  Stream #0:1[0x1e2](und): Audio: aac (LC) ([15][0][0][0] / 0x000F),
-                      48000 Hz, stereo, 192 kb/s
+  Stream #0:0[0x1e1]: Video: hevc (Main) ([36][0][0][0] / 0x0024), yuv420p(tv, bt709), 1920x1080 [SAR 1:1 DAR 16:9], 60 fps, 60 tbr, 90k tbn, start 2.033333
+  Stream #0:1[0x1e2](und): Audio: aac (LC) ([15][0][0][0] / 0x000F), 48000 Hz, stereo, fltp, 192 kb/s, start 2.000000
 ```
 
 | Property | Measured | Requirement |
 |---|---|---|
 | Video codec | `hevc (Main)`, TS stream type `0x0024` | HEVC |
-| Resolution | 1920x1080 | at least Full HD |
+| Resolution | 1920x1080, SAR 1:1, DAR 16:9 | at least Full HD |
+| Frame rate | 60 fps | — |
+| Color | `yuv420p(tv, bt709)` | — |
 | Audio | `aac (LC)`, 48000 Hz, stereo, 192 kb/s | at least 192 kbps |
 | Container | `mpegts` | .ts or .mxf |
 | Duration | 10.005333 s | — |
-| Container bitrate, size over duration | 15,552,541 bps | — |
+| Container bitrate, size over duration | 15,552,691 bps | — |
 
-Seven checks, all passing. This is the payoff measurement: not the local encode,
-but what the AWS encoder produced and S3 stored. `0x0024` is the MPEG-TS stream
-type for HEVC, and the audio lands on 192 kb/s exactly — the requirement floor,
-hit precisely, because MediaLive was configured with that number and produced
-it.
+Five checks pass on the probe. This is the payoff measurement: not the local
+encode and not the H.264 that OBS put on the wire, but what the AWS encoder
+produced and S3 stored. `0x0024` is the MPEG-TS stream type for HEVC, and the
+audio lands on 192 kb/s exactly — the requirement floor, hit precisely, because
+MediaLive was configured with that number and produced it.
 
-### 5.8 Teardown
+### 5.9 Teardown
 
-`06-teardown.log`, region `eu-central-1`:
+`06-teardown.log`, region `eu-central-1`, captured 2026-08-27 20:50:45 +0300.
+The log prints each class heading and its result on separate lines; they are
+paired up here, one class per line:
 
 ```
 --- MediaLive channels ---              [CLEAN]   no channels
@@ -715,6 +824,13 @@ MediaLive's `RTMP_PUSH` input expects H.264. That statement is checkable against
 the MediaLive API, where the previous statement was checkable against ffmpeg and
 came out false.
 
+That distinction is what the built pipeline runs on rather than a theoretical
+aside. The channel takes an H.264 contribution feed over RTMP from OBS and
+encodes HEVC into the archive, and `06-s3-archive.log` reads
+`hevc (Main) ([36][0][0][0] / 0x0024)` back off a segment S3 stored. The
+container could have carried HEVC on the wire; the receiver would not have taken
+it; the requirement is satisfied where the artifact is, which is the bucket.
+
 The transferable point is narrower than "test your assumptions". Producing a
 file that ffmpeg is happy to mux proves something about ffmpeg and nothing about
 what a remote service will ingest, and the two claims are easy to conflate
@@ -723,10 +839,10 @@ parties, and a test that involves only one of them answers a different question.
 
 ### 6.4 A container rate, an elementary stream rate, and a configured mux rate are three numbers
 
-The probe of the downloaded segment reports 15,552,541 bps. The requirement asks
+The probe of the downloaded segment reports 15,552,691 bps. The requirement asks
 for at least 12 Mbps of video. Those two numbers describe different things, and
-reading the first as an answer to the second happens to work here while being
-the wrong reasoning.
+reading the first as an answer to the second happens to clear the floor here
+while being the wrong reasoning.
 
 Three layers, and what each one is:
 
@@ -734,57 +850,63 @@ Three layers, and what each one is:
 |---|---|---|
 | Video elementary stream | 12,000,000 bps | configured in `h265_settings.bitrate` |
 | Audio elementary stream | 192,000 bps | configured in `aac_settings.bitrate`, and the probe reads back exactly `192 kb/s` |
-| MPEG-TS multiplex | 13,192,000 bps | configured at `terraform/main.tf:318` as video + audio + 1,000,000, CBR, padded with null packets |
+| MPEG-TS multiplex | 13,192,000 bps | configured at `terraform/main.tf:331` as video + audio + 1,000,000, CBR, padded with null packets |
 
 An ffprobe of a `.ts` file divides the file's byte count by its duration. What
 that produces is the **container** rate — video, audio, PSI tables, PCR, null
 padding, and 188-byte packet framing, all of it.
 
-The probed file is segment `000000`, which the listing shows as the 18.5 MiB
-startup segment rather than one of the steady-state ones. `06-s3-archive.log`
-records it as 19,451,044 bytes with a duration of 10.005333 s and a measured
-bitrate of 15,552,541 bps, and that figure describes that one segment.
+The probed file is segment `000000`, the first object of the run.
+`06-s3-archive.log` records it as 19,451,232 bytes with a duration of 10.005333
+s and a measured bitrate of 15,552,691 bps, and that figure describes that one
+segment.
 
 Working the steady-state segments the same way, from the listed sizes and the
 probed segment duration:
 
 ```
-16.3 MiB × 1,048,576 × 8 / 10.005333 s ≈ 13.67 Mbps
-16.4 MiB × 1,048,576 × 8 / 10.005333 s ≈ 13.75 Mbps
+18.9 MiB × 1,048,576 × 8 / 10.005333 s ≈ 15.85 Mbps
 ```
 
-That band brackets the configured mux rate of 13,192,000 bps plus TS overhead,
-which is what a CBR multiplex should produce. The listing rounds to 0.1 MiB, so
-those two figures are approximations of a rounded input — good enough to
-identify which layer they describe, which is the point of computing them.
+The listing rounds to 0.1 MiB, so that figure is an approximation of a rounded
+input, and the duration is the one probed segment's duration applied to the
+others — which the uniform 10-second timestamps support. It is good enough to
+identify which layer it describes, which is the point of computing it.
+
+Both container measurements sit above the configured multiplex rate:
+15,552,691 bps against 13,192,000 bps is a difference of 2,360,691 bps on the
+probed segment. That is a fact about the container the ARCHIVE group wrote, and
+it is not a reading of the video elementary stream, which is configured at
+12,000,000 bps and cannot be recovered by dividing a file's byte count by its
+duration.
 
 So: the figure to compare against the 12 Mbps requirement is the video
 elementary stream rate. The figure the uplink has to carry is the mux rate. The
-figure a probe of a segment reports is neither, and which segment gets probed
-moves the answer by roughly 14%.
+figure a probe of a segment reports is neither, and taking it for the video rate
+here would overstate by 3,552,691 bps.
 
-### 6.5 The segments that are not steady state each have their own reason
+### 6.5 The first and last objects of a live archive are not samples of the steady state
 
-Nine of the thirteen segments sit at 16.3–16.4 MiB, ten seconds apart. Four do
-not, and the shape of the exceptions is informative:
+Thirty-four of the thirty-six segments sit at 18.9 MiB, ten seconds apart. Two
+do not, and the shape of the exceptions is informative:
 
 | Segment | Size | What it is |
 |---|---|---|
-| `000000` | 18.5 MiB | the first segment, written as the encoder converges on its rate control target |
-| `000010`, `000011` | 18.9 MiB each | the last two full segments |
-| `000012` | 4.3 MiB | the final object, written when the channel stopped |
+| `000000` | 18.6 MiB | the first segment, 0.3 MiB under the 34 that follow it |
+| `000035` | 6.9 MiB | the final object, written 2 s after the previous rollover |
 
-`000011` and `000012` share the timestamp `20:13:35`, so the 10-second spacing
-holds for eleven of the twelve intervals and not for the last. That last write
-is a flush rather than a rollover: the channel stopped mid-segment and the
-encoder wrote what it had.
+`000034` is stamped `20:47:54` and `000035` `20:47:56`, so the 10-second spacing
+holds for thirty-four of the thirty-five intervals and not for the last. That
+last write is a flush rather than a rollover: the channel stopped mid-segment
+and the encoder wrote what it had.
 
 The operational reading matters for anyone consuming such an archive. A
-segmented live archive's first and last objects are not samples of the steady
-state, and a verification that probes the first object measures the startup
-transient. That is exactly what happened here — see 6.4 — and it is why the
-steady-state band is worth deriving separately rather than generalizing from one
-probe.
+verification that probes the first object measures the first object, which here
+carries the start of the encode and computes about 293 kbps below the
+steady-state figure derived in 6.4. That is small, and the reason to know it is
+that nothing in the probe says which segment it landed on. Deriving the
+steady-state band separately is what keeps one probe from standing in for
+thirty-six.
 
 ### 6.6 ffmpeg consumes stdin, and it starves every later ffmpeg in the script
 
@@ -842,33 +964,36 @@ channel is a partially built pipeline to reason about and clean up. Running
 `fmt -check`, `validate` and `plan -out` as a single sequence before any apply
 is what keeps that ordering, and it is the same sequence Task 05 uses.
 
-### 6.10 The runbook is written against the pipeline that exists
+### 6.10 An encoder configuration is a set of files, so it can be installed and read back
 
-`configs/obs-settings.md` documents every OBS field with the reason for its
-value, and it names `rtp://<medialive-input>:5000` with an explicit note that
-OBS's native Streaming output reaches RTP-MPEGTS through Custom Output (FFmpeg)
-with container `rtp_mpegts`. That matches `aws_medialive_input.this`, which is
-`RTP_PUSH`.
+OBS is usually documented as a screenshot of somebody's settings dialog. It does
+not have to be. A profile is `basic.ini` plus `streamEncoder.json` and
+`recordEncoder.json` in a directory, a scene collection is one JSON file, and
+which of each is active is four keys in `global.ini` — all under
+`%APPDATA%\obs-studio`. `scripts/obs-configure.sh` writes all of it, and OBS
+starts on it.
 
-Writing the runbook against the deployed input rather than against the default
-RTMP path is what makes it usable. An operator following it configures the
-pipeline the Terraform builds, and the document carries the reason the input is
-RTP — the receiver's codec expectation, established in 6.3 — so the next person
-to consider switching to RTMP has the measurement rather than the folklore.
+The consequence for evidence is the part worth keeping. `scripts/obs-evidence.sh`
+reads the installed profile back off disk and prints it — `BaseCX`, `OutputCX`,
+`FPSCommon`, `Track1Bitrate`, and `streamEncoder.json` field by field — and then
+quotes what OBS itself logged: `base resolution: 1920x1080`, `output
+resolution: 1920x1080`, `fps: 60/1`. The configuration and the encoder's own
+account of what it did come from two independent places in `06-obs.log` and
+agree, and neither of them is a screenshot.
 
-The same document carries the SRT argument for anyone taking this past a
-known-good local path: SRT retransmits lost packets within a configurable
-latency window, RTP over UDP does not recover them at all, and MediaLive
-supports SRT as an input type in which it dials out to a listener the operator
-runs.
+Launching with `--startstreaming --startrecording` closes the loop, because the
+run needs no click. A configuration that is documented and a configuration that
+was executed are then the same set of files, and the way to check the claim is
+to read them.
 
 ---
 
 ## 7. How to run it yourself
 
 Requirements on the host: ffmpeg and ffprobe 8.x with libx265, libx264 and the
-VMAF filter; Terraform 1.5 or later; the AWS CLI v2 authenticated; and a POSIX
-shell. On Windows, run the scripts from Git Bash.
+VMAF filter; Terraform 1.5 or later; the AWS CLI v2 authenticated; OBS Studio
+for the contribution leg, 32.2.1 in this run; and a POSIX shell. On Windows, run
+the scripts from Git Bash.
 
 ### Phase 1 — local, reproducible from a clone
 
@@ -902,8 +1027,17 @@ cd ..
 # The channel's running clock starts here, and every call prints elapsed time.
 ./scripts/channel.sh start
 
-# Push the Phase 1 HEVC file over RTP for 90 seconds, -re paced.
-./scripts/push-feed.sh 90
+# The RTMP destination, printed to the operator's terminal only.
+./scripts/channel.sh endpoints
+
+# Install the profile and scene collection where OBS reads them, and write the
+# service.json pointing OBS at that destination.
+./scripts/obs-configure.sh <rtmp-destination-url>
+
+# Then start OBS with --startstreaming --startrecording, and leave it running.
+
+# What OBS was configured to do, and what its own log says it did.
+./scripts/obs-evidence.sh
 
 # List what MediaLive wrote, download one segment, probe it.
 ./scripts/verify-archive.sh
@@ -924,18 +1058,20 @@ Notes for a clean run:
   running time whenever a start stamp exists.
 - **Set `ingest_source_cidr`.** It defaults to `0.0.0.0/0` because the operator
   address here is dynamic and the channel existed for minutes. With a fixed
-  address, that variable takes it and the RTP input accepts a push from nowhere
+  address, that variable takes it and the input accepts a push from nowhere
   else.
-- **`-re` on the push is required.** Without it ffmpeg reads the file as fast as
-  the disk allows and MediaLive's input buffer sees a feed far ahead of wall
-  clock.
+- **The RTMP destination is written at configure time, not committed.**
+  `obs-configure.sh` builds `service.json` from the URL passed to it, splitting
+  the last path element off as the stream key, because that URL names an ingest
+  that exists only while the channel does.
 - **`unset MSYS_NO_PATHCONV`** before calling ffmpeg, ffprobe, terraform or the
   AWS CLI from Git Bash. Every script in this directory already does. See 6.7.
 - **`force_destroy` on the bucket is what lets destroy complete**, because
   MediaLive writes objects Terraform never recorded.
-- **The endpoint is redacted on the way into evidence.** `push-feed.sh` prints
-  `<redacted in evidence>` in place of the RTP URL, and `channel.sh endpoints`
-  prints it only to the operator's terminal.
+- **The endpoint is masked on the way into evidence.** `channel.sh endpoints`
+  prints the ingest URL to the operator's terminal only, and the capture path
+  masks the address before it reaches a log — `06-obs.log` carries OBS's
+  connection lines as `rtmp://<PUBLIC-IP>:1935/task06`.
 
 ### Evidence produced by these steps
 
@@ -944,5 +1080,7 @@ Notes for a clean run:
 | `docs/evidence/06-encode.log` | `scripts/encode.sh` | the encoder settings with reasons, the ffprobe measurement of the produced file, and the I-frame count behind the 2.00 s GOP |
 | `docs/evidence/06-analysis.log` | `scripts/analysis.sh` | the 24-cell BPP table, both VMAF comparisons, the MXF muxer's refusal and the MPEG-2 fallback, and the FLV/HEVC result |
 | `docs/evidence/06-terraform-plan.log` | terraform fmt/validate/plan | `Plan: 10 to add, 0 to change, 0 to destroy.` |
-| `docs/evidence/06-s3-archive.log` | `scripts/verify-archive.sh` | the 13-object listing, the downloaded segment's size, and ffprobe on what AWS produced |
+| `docs/evidence/06-obs.log` | `scripts/obs-evidence.sh` | OBS Studio 32.2.1, the installed profile read back field by field, and OBS's own log lines for the RTMP connection, the streaming start and the recording start |
+| `docs/evidence/06-recording.log` | ffprobe on the OBS screen recording | container, duration, size and stream parameters as OBS wrote the recording and again after the lossless trim and remux |
+| `docs/evidence/06-s3-archive.log` | `scripts/verify-archive.sh` | the 36-object listing, the downloaded segment's size, and ffprobe on what AWS produced |
 | `docs/evidence/06-teardown.log` | `scripts/teardown-check.sh` | five resource classes queried against AWS after destroy |

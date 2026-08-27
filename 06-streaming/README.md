@@ -34,7 +34,7 @@ with no media assets.
 cd terraform && terraform init && terraform validate && terraform plan
 terraform apply                     # creates the channel; does NOT start it
 ../scripts/channel.sh start         # <-- the running clock starts HERE
-../scripts/push-feed.sh 90          # push the Phase 1 HEVC file over RTP
+../scripts/push-feed.sh 90          # or push the Phase 1 file instead of OBS
 ../scripts/verify-archive.sh        # list, download and ffprobe a segment
 ../scripts/channel.sh stop          # <-- back to IDLE
 terraform destroy
@@ -63,9 +63,10 @@ something that did not happen.
 **RTMP carried HEVC fine.** The expectation was a mux failure. This ffmpeg
 implements Enhanced RTMP (2023), which adds HEVC to FLV via a FourCC
 extension, and the mux succeeded. The real constraint is the *receiver*:
-MediaLive's RTMP_PUSH input expects H.264. So the Terraform uses RTP_PUSH — but
-justified by what MediaLive accepts, rather than by a container constraint that this
-test disproved.
+MediaLive's RTMP_PUSH input expects H.264. So OBS contributes H.264 over RTMP
+and the channel encodes HEVC into the archive, which puts the codec requirement
+where it belongs — in the `.ts` segments — justified by what MediaLive accepts
+rather than by a container constraint this test disproved.
 
 **MXF genuinely rejected HEVC:** `could not find essence container ul, codec not
 currently supported in container`. MPEG-TS is chosen for the archive on

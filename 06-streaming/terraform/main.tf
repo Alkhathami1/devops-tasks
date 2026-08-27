@@ -154,17 +154,6 @@ resource "aws_iam_role_policy" "medialive_s3" {
 
 # ---------------------------------------------------------------------------
 # MediaLive input
-#
-# RTP_PUSH rather than RTMP_PUSH, and the reason is measured rather than
-# assumed (see scripts/analysis.sh):
-#
-#   Classic RTMP/FLV has no CodecID for HEVC. Enhanced RTMP (2023) adds one and
-#   modern ffmpeg implements it - the local test muxes HEVC into FLV without
-#   complaint - but MediaLive's RTMP_PUSH input expects H.264 and will not
-#   ingest it. The blocker is the receiver, not the container.
-#
-#   RTP_PUSH carries MPEG-TS, which has a native stream type for HEVC (0x24),
-#   and ffmpeg pushes it with `-f rtp_mpegts`.
 # ---------------------------------------------------------------------------
 
 resource "aws_medialive_input_security_group" "this" {
@@ -177,10 +166,28 @@ resource "aws_medialive_input_security_group" "this" {
   }
 }
 
+# RTMP_PUSH, because the contribution encoder is OBS Studio and OBS speaks RTMP
+# natively from its own Stream output.
+#
+# The codec requirement is met at the deliverable rather than on the wire. OBS
+# contributes H.264 over RTMP, MediaLive decodes it, and the channel encodes
+# HEVC into the ARCHIVE output group, so the .ts segments that land in S3 are
+# HEVC - which is what the task asks to record. The split is deliberate: classic
+# RTMP has no CodecID for HEVC, and while Enhanced RTMP adds one, MediaLive's
+# RTMP input expects H.264. The constraint belongs to the receiver.
+#
+# RTP_PUSH is the alternative when the encoder can emit it: RTP carries
+# MPEG-TS, which has a native stream type for HEVC (0x24), and ffmpeg pushes it
+# with `-f rtp_mpegts` - a path that carries HEVC end to end. OBS's Stream
+# output cannot emit RTP-MPEGTS, which is what settles the choice here.
 resource "aws_medialive_input" "this" {
   name                  = "${var.name_prefix}-input"
-  type                  = "RTP_PUSH"
+  type                  = "RTMP_PUSH"
   input_security_groups = [aws_medialive_input_security_group.this.id]
+
+  destinations {
+    stream_name = "${var.name_prefix}/live"
+  }
 }
 
 # ---------------------------------------------------------------------------

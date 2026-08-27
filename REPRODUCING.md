@@ -187,10 +187,26 @@ The AWS half creates cloud resources. Teardown is scripted and verified.
 ```bash
 cd terraform && terraform init && terraform plan -out=tfplan.binary
 terraform apply tfplan.binary && cd ..
+
+# point OBS at the channel's ingest: writes the profile and scene collection
+# where OBS reads them, so no GUI configuration is needed
+INPUT=$(cd terraform && terraform output -raw input_id)
+DEST=$(aws medialive describe-input --input-id "$INPUT" --region eu-central-1 \
+         --query 'Destinations[0].Url' --output text)
+bash scripts/obs-configure.sh "$DEST"
+
 bash scripts/channel.sh start
+# then either launch OBS as the contribution encoder:
+#   "C:\Program Files\obs-studio\bin\64bit\obs64.exe" --startstreaming --startrecording
+# or push the Phase 1 file instead:
 bash scripts/push-feed.sh
+
 bash scripts/verify-archive.sh
 bash scripts/channel.sh stop
+
+# if OBS recorded locally, trim the recording to the streaming window
+# losslessly. It is written outside the repository and never tracked.
+bash scripts/trim-recording.sh "path/to/obs.mkv" "outside/repo/task06.mp4"
 ```
 
 **Expect:** the channel reaching `RUNNING`, `.ts` segments appearing in S3, and

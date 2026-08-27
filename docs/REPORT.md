@@ -14,7 +14,7 @@ The logs in `docs/evidence/` carry the command, the timestamp and the full
 output behind every figure in this report. Each task directory holds a
 `WALKTHROUGH.md` with the full reasoning and the complete steps.
 
-**Five results that carry furthest.**
+**Six results that carry furthest.**
 
 A multipart copy whose destination ETag ends `-5` against a single-PUT source
 ETag with no suffix. The suffix is the part count, so the two ETags are direct
@@ -36,6 +36,11 @@ file AWS wrote.
 
 Three Prometheus alert rules driven from inactive through pending to firing on
 live conditions and back again, including one watching the SMB share itself.
+
+A Windows client mapping a Linux Samba share across a private WireGuard tunnel
+at SMB dialect 3.1.1 encrypted, with the file it wrote read back on the server's
+own filesystem — and the same address carrying no route at all before the tunnel
+was raised.
 
 ---
 
@@ -87,6 +92,7 @@ share, and Windows read it back byte for byte with `Get-Content`.
 | XFS single-file ceiling | 8 EiB, measured | `01-xfs.log` |
 | 1 GiB file extent map | 3 records across 3 allocation groups | `01-xfs.log` |
 | Alert rules loaded / driven to firing | 10 / 3 | `01-alerts.log` |
+| Persistence across a reboot | mount live at container start, share readable, no manual command | `01-reboot.log` |
 | Full suite | 8 checks, 0 failures | `01-verify-suite.log` |
 
 ### Insights
@@ -344,6 +350,10 @@ and read back on a second request.
 | Tier traversal | row written through nginx to app to db, read back | `05-architecture.log` |
 | Public addresses | 2 of 4 instances | `05-architecture.log` |
 | Route to the database range from public | none exists | `05-architecture.log` |
+| Tunnel handshake | completed, 900 B received / 764 B sent | `05-vpn-smb.log` |
+| Through the tunnel | ICMP to `10.20.1.2` at ~212 ms, TCP 445 open | `05-vpn-smb.log` |
+| Same address, tunnel down | no adapter, no route, 445 refused | `05-vpn-smb.log` |
+| Windows client mapping | `Z:` to the app-tier share, dialect 3.1.1, encrypted | `05-vpn-smb.log` |
 | Ansible second run | `changed=0` on all four hosts | `05-ansible-idempotency.log` |
 | Post-destroy sweep | every resource class clean | `05-destroy-orphan-check.log` |
 
@@ -389,17 +399,27 @@ costs those packets and the stream resynchronizes at the next alignment point;
 a damaged MXF header or index can lose the file. TS is also what MediaLive's
 ARCHIVE output group writes natively.
 
-**RTP push carrying MPEG-TS as the contribution input**, because MPEG-TS has a
-native stream type for HEVC and MediaLive's RTMP input expects H.264.
+**RTMP push as the contribution input, with HEVC at the deliverable.** OBS
+speaks RTMP natively from its own Stream output, so the contribution leg is
+H.264 over RTMP; MediaLive decodes it and encodes HEVC into the ARCHIVE output
+group, which makes the `.ts` segments in S3 — the thing the task asks to
+record — HEVC. The split is deliberate rather than a compromise: classic RTMP
+has no CodecID for HEVC, Enhanced RTMP adds one and ffmpeg muxes it without
+complaint, and MediaLive's RTMP input still expects H.264. The constraint
+belongs to the receiver, so the codec requirement is met where the requirement
+actually lives.
 
 ### What was built and run
 
 Local HEVC encodes with ffmpeg from a synthetic source, so the whole analysis is
 reproducible, measured with ffprobe. A codec comparison against H.264 scored
 with VMAF at two bitrates. Terraform describing the AWS side: an S3 bucket, a
-MediaLive input security group, an RTP push input, a single-pipeline channel
+MediaLive input security group, an RTMP push input, a single-pipeline channel
 with an H.265 encode and an ARCHIVE output group, and the IAM role MediaLive
-needs. The channel ran, took a feed, and wrote its archive to S3.
+needs. OBS Studio 32.2.1 was installed and configured programmatically - profile and
+scene collection written where OBS reads them, no GUI - and launched with
+`--startstreaming --startrecording`. The channel took that feed and wrote its
+archive to S3.
 
 | Measurement | Value | Evidence |
 |---|---|---|
@@ -409,8 +429,9 @@ needs. The channel ran, took a feed, and wrote its archive to S3.
 | BPP at 1080p60, 12 Mbps | 0.0965 | `06-analysis.log` |
 | VMAF at 12 Mbps | HEVC 74.686293, H.264 75.093992 | `06-analysis.log` |
 | VMAF at 3 Mbps | HEVC 69.975861, H.264 69.023453 | `06-analysis.log` |
-| MediaLive segment | `hevc (Main) … 0x0024`, 1920x1080 | `06-s3-archive.log` |
-| Archive written | 13 `.ts` segments, 207.6 MiB | `06-s3-archive.log` |
+| OBS contribution | 1920x1080, 60/1 fps, RTMP connected, streaming and recording | `06-obs.log` |
+| MediaLive segment | `hevc (Main) … 0x0024`, 1920x1080, 60 fps, AAC 192 kb/s | `06-s3-archive.log` |
+| Archive written | 36 `.ts` segments from the OBS feed | `06-s3-archive.log` |
 | Post-destroy sweep | channels, inputs, security groups, buckets, roles clean | `06-teardown.log` |
 
 ### Insights
@@ -526,6 +547,32 @@ sqlcmd's `Changed database context to 'AppDb'.` banner instead of data — a
 comparison of two identical banners, which would have passed whatever the
 restore did. Mutating a check until it goes red is the only way to know it can.
 
+**A mapped network drive over a VPN does not reconnect at sign-in.** Windows
+reconnects mapped drives early in the logon sequence, and a tunnel that starts
+as a service is not carrying traffic yet at that moment. The drive is recorded
+`Unavailable` and Windows does not retry. Measured 2m23s after a reboot: TCP 445
+to the server reachable, credential present in Credential Manager, drive still
+`Unavailable` and not attached to the session. Re-establishing once the tunnel
+was carrying traffic succeeded with no password supplied. Two separate things
+have to be true — the credential has to be stored, because `net use` with an
+inline password authenticates that logon session only and stores nothing, and
+the reconnect has to happen after the tunnel is up. Where the drive must be
+present at sign-in, that reconnect belongs in a network-triggered task rather
+than in the logon sequence.
+
+**A guard should test the condition it cares about, not a file something else
+might create.** An Ansible task setting a Samba password was guarded with
+`creates: passdb.tdb` — a file the package writes at install time. The task
+skipped on the first run and left an account with a Unix identity and no Samba
+password: a playbook reporting success over an unusable account. Testing for the
+account in `pdbedit -L` is the check the task is actually about.
+
+**A tunnel gateway that masquerades changes what the far end sees.** WireGuard
+NATs tunnel traffic onto the bastion, because the apps VPC has no route back to
+the tunnel subnet. A firewall rule at the far tier written against the tunnel
+range matches nothing; it has to name the gateway. `smbstatus` settles it — the
+session's Machine column reads the bastion, not the client.
+
 **Defaults must fail toward the disposable target.** A tool that resolves an
 unset endpoint variable to production sends a debug script to a live account the
 first time someone forgets. The resolver here defaults to the local endpoint and
@@ -542,11 +589,11 @@ Full detail in `docs/TRACEABILITY.md`.
 |---|---|---|---|
 | 1.1 | Protocol used and why | SMB 3.1.1 justified on the identity model; dialect `0x311` and an encrypted session read from the kernel | `01-direction-a.log` |
 | 1.2 | Mounting steps | Real Windows share mounted with `mount.cifs`; round trip verified by Windows reading back what Linux wrote | `01-direction-a.log` |
-| 1.3 | Persistent across reboots | fstab entry for both shares with `_netdev`, `nofail`, `x-systemd.automount` and a mode-600 credentials file; remount proven by `mount -a` alone | `01-persistence.log` |
+| 1.3 | Persistent across reboots | fstab entry with `_netdev`, `nofail` and a mode-600 credentials file, replayed by `mount -a` at container start; proven across two full reboots with the share readable and no manual command | `01-reboot.log` |
 | 1.4 | Monitoring mount and disk performance | diskstats, iostat, fio, node_exporter and Prometheus over both mounts, plus CIFS session and reconnect counters | `01-monitoring.log` |
 | 1.5 | Alerting to guarantee service level | 10 rules against a stated SLO, `promtool` clean; 3 driven inactive to pending to firing and back | `01-alerts.log` |
 | 1.6 | Filesystem for 1 TB single files | XFS justified over ext4 and ZFS; 8 EiB ceiling measured, 1 GiB extent map across 3 allocation groups, grown online 2 GiB to 4 GiB | `01-xfs.log` |
-| 1.7 | Reverse direction, Linux to Windows | Samba serving SMB 3.1.1 with encryption required and SMB1 disabled; Windows mapping procedure documented | `01-direction-b.log` |
+| 1.7 | Reverse direction, Linux to Windows | Samba serving SMB 3.1.1 with encryption required and SMB1 disabled; executed end to end on the app tier, where a Windows client mapped the share and the server read the written file back on its own filesystem | `05-vpn-smb.log` |
 | 2.0 | Apps on a private Docker network | Postgres, backend and nginx across two networks, data tier `internal: true`; 19 isolation checks | `02-network-isolation.log` |
 | 2.1 | Automate as much as possible | One command to healthy with healthchecks and `depends_on: service_healthy`; idempotent migrations and seed | `02-stack-up.log` |
 | 2.2 | Secret manager or environment variables | Both built and contrasted: `docker inspect` shows the env var in plaintext, the file secret only as a path | `02-secrets.log` |
@@ -563,12 +610,12 @@ Full detail in `docs/TRACEABILITY.md`.
 | 5.1 | Three networks: public, apps, dbs | Three VPCs applied and configured; row written through all three tiers and read back | `05-architecture.log` |
 | 5.2 | Three-tier architecture | 4 instances across 3 tiers plus a bastion, 2 of 4 with a public address, egress via Cloud NAT | `05-architecture.log` |
 | 5.3 | Proper network segmentation | Deny-by-default with service-account sources; boundary enforced at the routing layer, proven three ways with a positive control | `05-architecture.log` |
-| 5.4 | Private VPN access to app and DB tiers | WireGuard deployed on the bastion by Ansible, interface up on `10.99.0.1`, peer configured, forwarding enabled, UDP 51820 the only path opened | `05-architecture.log` |
+| 5.4 | Private VPN access to app and DB tiers | WireGuard on the bastion with a client tunnel established: handshake completed, counters nonzero both ways, app tier answering ICMP and 445 through it, and the same address unreachable with the tunnel down | `05-vpn-smb.log` |
 | 5.5 | Terraform or similar | 32 resources described, validated, formatted and planned clean | `05-plan.log` |
 | 5.6 | Ansible configuration | Five roles through a dynamic inventory with `ProxyJump`; `changed=0` on the second run across four hosts | `05-ansible-idempotency.log` |
 | 6.1 | At least Full HD | 1920x1080 locally and from MediaLive, measured with ffprobe on the AWS-produced segment | `06-s3-archive.log` |
 | 6.2 | 12 Mbps video, 192 kbps audio | 12,652,330 bps overall locally with audio at 194,205 bps; AAC exactly 192 kb/s from MediaLive | `06-encode.log` |
 | 6.3 | Justify bitrate with a BPP formula | BPP computed across four resolutions and six bitrates; 0.0965 bpp at 1080p60 | `06-analysis.log` |
-| 6.4 | HEVC codec | H.265 Main, 2-second GOP, confirmed as `hevc (Main)` with stream type `0x24` | `06-s3-archive.log` |
-| 6.5 | Record to S3 as .mxf or .ts | ARCHIVE output group writing MPEG-TS over `s3ssl://`; 13 segments, one pulled back and probed | `06-s3-archive.log` |
+| 6.4 | HEVC codec | H.265 Main, 2-second GOP, encoded by MediaLive from an OBS feed, confirmed as `hevc (Main)` with stream type `0x24` at 60 fps | `06-s3-archive.log` |
+| 6.5 | Record to S3 as .mxf or .ts | ARCHIVE output group writing MPEG-TS over `s3ssl://`; 36 segments from the OBS feed, one pulled back and probed | `06-s3-archive.log` |
 | 6.6 | Document every step | 10 AWS resources described and planned clean; encoder profile documented field by field; operator runbook against the deployed RTP input | `06-terraform-plan.log` |
