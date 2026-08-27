@@ -1,0 +1,126 @@
+# Secrets — never commit
+.env
+*.env
+!.env.example
+*.pem
+*.key
+!**/roles/**/*.key.j2
+credentials*
+smbcredentials
+*-sa-key.json
+wg-*.conf
+
+# SSH keypairs. The private half of an ed25519 key has no extension at all,
+# so *.pem / *.key / id_rsa miss it entirely - which is how a generated
+# task05_ed25519 turned up untracked-but-committable.
+**/.ssh/
+!**/.ssh/*.pub
+
+# Docker file-based secrets (Task 02). The directory is tracked via .gitkeep so
+# the compose file's bind target exists, but its contents never are.
+**/secrets/*
+!**/secrets/.gitkeep
+!**/secrets/*.example
+
+# Terraform
+# A saved plan is not inert: it embeds the full resource graph AND the variable
+# values used to produce it, including the project id and the SSH public key.
+*.tfplan
+tfplan.binary
+
+# Generated Ansible inventory. Pins live public addresses into git and goes
+# stale the moment the estate is rebuilt; scripts/inventory.sh regenerates it
+# from terraform output.
+**/ansible/inventory/hosts.yml
+
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# Node
+node_modules/
+npm-debug.log*
+.node-red/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Data / backups / media (large, regenerable)
+*.bak
+*.mdf
+*.ldf
+*.mxf
+*.mp4
+
+# Task 06 archive output: MPEG transport streams (.ts).
+# Scoped to 06-streaming/ on purpose — a bare `*.ts` would also swallow
+# TypeScript source files anywhere in the repo.
+06-streaming/**/*.ts
+data/
+backups/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+01-storage-mounts/windows/.setup-state.json
+
+# --- identity and generated-artefact hardening -----------------------------
+# Each rule below closes a shape that the existing rules would have missed.
+# None of these files exist today; the point is that they cannot appear later
+# and be caught only by luck.
+
+# An editor/tool config that was protected only by a user-global ignore file,
+# so a clone on another machine had no protection at all.
+**/.claude/settings.local.json
+
+# `terraform plan -out=tfplan` is the common idiom and produces no extension.
+# A saved plan embeds the variable values used to build it.
+tfplan*
+*.tfplan
+
+# A generated inventory pins live public addresses. The old rule matched one
+# exact filename.
+**/inventory/*.ini
+**/inventory/*.yml
+**/inventory/*.yaml
+*_hosts.ini
+
+# An SSH private key with no extension is the shape that nearly got committed
+# once already. The old fix was directory-scoped; these are not.
+**/*_ed25519
+**/*_rsa
+**/*_ecdsa
+**/id_[a-z]*
+!**/*.pub
+
+# Region, profile and SSO endpoints.
+**/.aws/
+
+# Terraform reads these natively and *.tfvars does not match them.
+*.tfvars.json
+*.auto.tfvars.json
+
+# *.env matches .env and foo.env, but not .env.local or .env.production.
+.env.*
+
+# A generated inventory under any name, not just inside an inventory/ directory.
+*inventory*.yml
+*inventory*.yaml
+*inventory*.ini
+**/ansible/hosts
+**/ansible/hosts.*
+
+# A saved plan under any name.
+plan.out
+saved-plan
+
+# An SSH private key written outside .ssh/ under a name with no extension.
+**/deploy_key
+**/deploykey
