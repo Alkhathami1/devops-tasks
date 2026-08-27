@@ -1,0 +1,105 @@
+﻿----------------------------------------------------------------
+### XFS filesystem: geometry, max file size, 1 TiB sparse file, real extents, AG layout, online growth
+COMMAND   : ./scripts/xfs-demo.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 06:14:26 +0300
+----------------------------------------------------------------
+=== Requirement 6: XFS filesystem for single files up to 1 TB ===
+
+--- kernel support ---
+    	xfs
+    nodev	selinuxfs
+    mkfs.xfs version 6.1.0
+
+--- 1. build the filesystem ---
+    backing image: 2 GiB sparse file at /var/lib/task01/xfs.img
+
+    mkfs.xfs output (the authoritative statement of geometry):
+      meta-data=/var/lib/task01/xfs.img isize=512    agcount=4, agsize=131072 blks
+               =                       sectsz=512   attr=2, projid32bit=1
+               =                       crc=1        finobt=1, sparse=1, rmapbt=0
+               =                       reflink=1    bigtime=1 inobtcount=1 nrext64=0
+      data     =                       bsize=4096   blocks=524288, imaxpct=25
+               =                       sunit=0      swidth=0 blks
+      naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+      log      =internal log           bsize=4096   blocks=16384, version=2
+               =                       sectsz=512   sunit=0 blks, lazy-count=1
+      realtime =none                   extsz=4096   blocks=0, rtextents=0
+
+--- 2. mount it ---
+[PASS] XFS mounted at /mnt/xfs
+    /dev/loop2 /mnt/xfs xfs    rw,noatime,attr2,inode64,logbufs=8,logbsize=32k,noquota
+[PASS] filesystem type is XFS
+
+--- 3. the filesystem's own limits, from its superblock ---
+    xfs_info:
+      meta-data=/dev/loop2             isize=512    agcount=4, agsize=131072 blks
+               =                       sectsz=512   attr=2, projid32bit=1
+               =                       crc=1        finobt=1, sparse=1, rmapbt=0
+               =                       reflink=1    bigtime=1 inobtcount=1 nrext64=0
+      data     =                       bsize=4096   blocks=524288, imaxpct=25
+               =                       sunit=0      swidth=0 blks
+      naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+      log      =internal log           bsize=4096   blocks=16384, version=2
+               =                       sectsz=512   sunit=0 blks, lazy-count=1
+      realtime =none                   extsz=4096   blocks=0, rtextents=0
+
+    Derived maximum file size:
+      block size reported by xfs_info : 4096 bytes
+      kernel max file size (statfs)   : 4096 bytes/block, 507904 blocks
+
+    largest file offset the kernel accepts on this filesystem:
+      max file size: 9223372036854775807 bytes (8388608.00 TiB, 8.00 EiB)
+
+--- 4. create a 1 TB file (sparse) ---
+    A sparse file has a real size in the inode but no allocated extents
+    for the holes. This proves the filesystem can ADDRESS 1 TB; it does
+    not prove 1 TB of data was written, and is not presented as if it did.
+
+    apparent size (st_size)      : 1099511627776 bytes
+    allocated blocks (st_blocks) : 0 x 512 bytes
+      -rw-r--r-- 1 root root 1.0T Aug 26 03:14 /mnt/xfs/one-terabyte.img
+      apparent: 1.0T	/mnt/xfs/one-terabyte.img
+      on disk : 0	/mnt/xfs/one-terabyte.img
+[PASS] a single file of exactly 1 TiB (1099511627776 bytes) exists on the filesystem
+[PASS] it is genuinely sparse (0 blocks allocated) - honest about what this proves
+
+--- 5. fallocate: reserve REAL extents, not holes ---
+    This exercises the allocator itself. Sized to fit the 2 GiB image,
+    because reserving 1 TB of real extents needs 1 TB of real space.
+[PASS] fallocate reserved 1 GiB of real extents
+    allocated blocks: 2097152 x 512 = 1073741824 bytes
+[PASS] extents are really allocated, not sparse
+
+    extent layout (XFS is extent-based, so 1 GiB is a handful of records,
+    not 262144 individual block pointers):
+      /mnt/xfs/real-extents.img:
+       EXT: FILE-OFFSET         BLOCK-RANGE      AG AG-OFFSET          TOTAL
+         0: [0..1041151]:       1048656..2089807  1 (80..1041231)    1041152
+         1: [1041152..2082303]: 3145808..4186959  3 (80..1041231)    1041152
+         2: [2082304..2097151]: 192..15039        0 (192..15039)       14848
+      extent records for 1 GiB: 4
+
+--- 6. allocation groups: XFS's parallelism unit ---
+    agcount = 4
+    Each allocation group has its own free-space and inode B+trees, and
+    can be allocated from independently. That is why XFS scales with
+    parallel writers where ext4's single block-group bitmap serialises.
+
+--- 7. online growth ---
+    XFS grows online and CANNOT be shrunk - a real trade-off, not a bug.
+      loop now exposes 4.0 GiB
+      data blocks changed from 524288 to 1048576
+    size before growfs: 2.0G
+    size after  growfs: 4.0G
+
+--- final state ---
+    Filesystem     Type  Size  Used Avail Use% Mounted on
+    /dev/loop2     xfs   4.0G  1.1G  2.9G  27% /mnt/xfs
+    total 1.0G
+    -rw-r--r-- 1 root root 1.0T Aug 26 03:14 one-terabyte.img
+    -rw-r--r-- 1 root root 1.0G Aug 26 03:14 real-extents.img
+
+RESULT: XFS REQUIREMENT SATISFIED
+EXIT CODE : 0
+

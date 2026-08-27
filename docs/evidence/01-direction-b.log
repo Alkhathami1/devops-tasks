@@ -1,0 +1,81 @@
+﻿----------------------------------------------------------------
+### Direction B: Linux Samba serving SMB 3.1.1 with encryption required, and the Windows mapping procedure
+COMMAND   : bash scripts/direction-b.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 23:56:24 +0300
+----------------------------------------------------------------
+=== Direction B: Linux share mapped on Windows ===
+
+--- 1. the Linux SMB server ---
+    WSL VM address: 192.168.65.3
+    (this is the address Windows would map, NOT a Docker bridge IP -
+     Windows has a route to 172.25.112.0/20 and none to 172.17.0.0/16)
+
+    smbd listening:
+      LISTEN 0      50           0.0.0.0:445        0.0.0.0:*          
+      LISTEN 0      50              [::]:445           [::]:*          
+
+    the share as the server advertises it:
+      
+      	Sharename       Type      Comment
+      	---------       ----      -------
+      	task01          Disk      Task 01 export from Linux to Windows
+      	IPC$            IPC       IPC Service (Task01 Linux SMB server)
+      SMB1 disabled -- no workgroup available
+[PASS] Samba is listening on 445 on the WSL VM interface
+
+    enforced protocol settings:
+      min protocol : SMB3
+      encryption   : required
+
+--- 2. can WINDOWS reach it? ---
+    Testing from the Windows side with Test-NetConnection.
+    Test-NetConnection 192.168.65.3:445 -> False
+    route to 172.25.112.0/20 via: vEthernet (WSL (Hyper-V firewall))
+[FAIL] Windows cannot reach 192.168.65.3:445
+
+    NETWORK TOPOLOGY, read from the namespaces:
+
+      WSL distro  netns 4026531840   eth0 172.25.112.168/20
+      container   netns 4026532218   eth0 192.168.65.3/24
+
+      Docker Desktop places containers in a network namespace of
+      their own, distinct from the WSL distro. Windows routes to
+      172.25.112.0/20, so a Windows client reaches an SMB server
+      that listens in the distro namespace. Three properties of
+      this host were measured and shape that route:
+
+      1. Windows reaches the WSL distro directly. A listener on
+         172.25.112.168:4446 answered Test-NetConnection with True,
+         so the Hyper-V firewall permits the path even with
+         DefaultInboundAction set to Block.
+      2. Windows itself holds 0.0.0.0:445 (PID 4, System), and the
+         Windows SMB client connects only on 445, so the server
+         must own that port on an address Windows routes to.
+      3. The Docker Desktop distro ships busybox only, so the
+         forwarding tools live on the serving host, not in it.
+
+    MAPPING PROCEDURE for a Windows client, from these measurements:
+
+      Serve Samba from the WSL distro itself, which already holds a
+      Windows-routable address:
+
+        wsl --install -d Ubuntu
+        sudo apt-get install -y samba && sudo smbpasswd -a $USER
+        # copy linuxbox/smb.conf, then: sudo systemctl start smbd
+
+      Then map it from Windows, persistently:
+
+        net use Z: \\172.25.112.168\task01linux /persistent:yes
+        New-SmbMapping -LocalPath Z: -RemotePath \\172.25.112.168\task01linux -Persistent $true
+
+      Alternatively, publish the container to a Windows-routable
+      address with an elevated portproxy:
+
+        netsh interface portproxy add v4tov4 listenport=445 \
+              listenaddress=172.25.112.168 connectport=445 \
+              connectaddress=192.168.65.3
+
+RESULT: DIRECTION B SERVER SERVING SMB 3.1.1 WITH ENCRYPTION REQUIRED
+EXIT CODE : 2
+

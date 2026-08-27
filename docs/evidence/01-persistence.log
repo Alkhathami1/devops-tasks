@@ -1,0 +1,80 @@
+﻿----------------------------------------------------------------
+### Requirement 3: fstab persistence for both shares
+COMMAND   : bash scripts/persistence.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 23:53:11 +0300
+----------------------------------------------------------------
+=== Requirement 3: persistence across reboots ===
+
+--- the fstab entry, option by option ---
+    //127.0.0.1/task01  /mnt/smb  cifs  credentials=/etc/samba/task01.creds,vers=3.1.1,seal,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30,uid=0,gid=0  0 0
+
+    credentials=      the password comes from a mode-600 file. Putting it in
+                      fstab directly would expose it to every user on the
+                      system, because /etc/fstab is world-readable (644) by
+                      design - other tools need to read it.
+    vers=3.1.1        pin the dialect. Without it the client negotiates, and a
+                      downgrade is exactly what an attacker wants.
+    seal              require SMB3 encryption for this mount.
+    _netdev           tell the init system this needs the network. Without it,
+                      systemd may try to mount before networking is up and the
+                      mount simply fails at boot.
+    nofail            boot continues if the mount fails. WITHOUT THIS, an
+                      unreachable share blocks boot: systemd waits on the mount
+                      unit, the dependency chain stalls, and the machine drops
+                      to an emergency shell. This is the classic way a file
+                      server outage turns into every client failing to boot.
+    x-systemd.automount
+                      mount lazily on first access rather than at boot. The
+                      boot does not wait for the server at all, and a share
+                      that is down at boot but up later still works.
+    x-systemd.mount-timeout=30
+                      bound the wait. The default is 90s per mount, which is a
+                      long time to spend discovering a server is gone.
+
+--- writing it to /etc/fstab ---
+    /etc/fstab now contains:
+      # Task 01 Direction A - Windows share, persistent across reboots
+      # Task 01 - SMB3 mount, persistent across reboots
+      # Task 01 - SMB3 mount, persistent across reboots
+      //127.0.0.1/task01  /mnt/smb  cifs  credentials=/etc/samba/task01.creds,vers=3.1.1,seal,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30,uid=0,gid=0  0 0
+
+--- /etc/fstab is world-readable, which is why the password is not in it ---
+    /etc/fstab -> mode 644 root:root
+[PASS] fstab is mode 644: any local user can read it, so it must not hold secrets
+    the credentials file it points at is not:
+      /etc/samba/task01.creds -> mode 600 root:root
+
+--- does the entry actually work? mount -a ---
+[PASS] mount -a mounted the fstab entry without error
+      //127.0.0.1/task01 /mnt/smb cifs
+[PASS] the share is mounted from the fstab entry alone
+
+--- the nofail failure mode, demonstrated ---
+    An entry pointing at a host that does not exist, WITHOUT nofail.
+    On a real boot systemd would block on this; here mount -a shows the
+    same failure directly, bounded so the drill does not hang.
+
+    (192.0.2.0/24 is TEST-NET-1 from RFC 5737 - guaranteed unroutable)
+    attempting the mount with a 20s ceiling:
+      mount error(115): Operation now in progress
+      Refer to the mount.cifs(8) manual page (e.g. man mount.cifs) and kernel log messages (dmesg)
+      ...gave up after 11s
+[PASS] the unreachable share did NOT mount, as expected
+
+    Without nofail this hang happens during boot, on the critical path.
+    With nofail the same failure is logged and boot proceeds. With
+    x-systemd.automount it is not even attempted until first access.
+    (removed the deliberately broken entry)
+
+--- systemd automount option ---
+    x-systemd.automount is present in the fstab entry, syntactically
+    correct, and accepted by mount. On a systemd host the generator
+    turns it into an automount unit that mounts the share on first
+    access rather than at boot, which is what keeps a slow or absent
+    server from delaying startup. This container runs smbd as PID 1,
+    so the option is carried in the entry and read by mount here.
+
+RESULT: PERSISTENCE CONFIGURED AND VERIFIED
+EXIT CODE : 0
+

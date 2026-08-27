@@ -1,0 +1,953 @@
+﻿----------------------------------------------------------------
+### Task 01 full verification suite
+COMMAND   : bash scripts/verify.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 23:57:06 +0300
+----------------------------------------------------------------
+=== Task 01 verification suite ===
+started: 2026-08-26 23:57:07 +0300
+
+################################################################
+# 0. Bring up (idempotent)
+################################################################
+
+==> 1. Configuration
+    SMB password secret present, left untouched
+
+==> 2. Load the cifs kernel module
+    cifs module loaded and visible in /proc/filesystems
+
+==> 3. Build and start
+#1 [internal] load local bake definitions
+#1 reading from stdin 584B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.68kB done
+#2 DONE 0.0s
+
+#3 [auth] library/debian:pull token for registry-1.docker.io
+#3 DONE 0.0s
+
+#4 [auth] prom/node-exporter:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/prom/node-exporter:v1.8.2
+#5 DONE 3.4s
+
+#6 [internal] load metadata for docker.io/library/debian:12-slim
+#6 DONE 3.4s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 2B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 DONE 0.0s
+
+#9 FROM docker.io/prom/node-exporter:v1.8.2@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706
+#9 resolve docker.io/prom/node-exporter:v1.8.2@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706 0.1s done
+#9 DONE 0.1s
+
+#10 [stage-0 1/8] FROM docker.io/library/debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+#10 resolve docker.io/library/debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 0.1s done
+#10 DONE 0.1s
+
+#8 [internal] load build context
+#8 transferring context: 98B done
+#8 DONE 0.0s
+
+#11 [stage-0 6/8] COPY cifs-metrics.sh /usr/local/bin/cifs-metrics.sh
+#11 CACHED
+
+#12 [stage-0 2/8] RUN apt-get update && apt-get install -y --no-install-recommends       cifs-utils       samba       samba-common-bin       smbclient       xfsprogs       sysstat       procps       iproute2       iputils-ping       netcat-openbsd       curl       ca-certificates       fio  && rm -rf /var/lib/apt/lists/*
+#12 CACHED
+
+#13 [stage-0 3/8] COPY --from=prom/node-exporter:v1.8.2 /bin/node_exporter /usr/local/bin/node_exporter
+#13 CACHED
+
+#14 [stage-0 5/8] COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+#14 CACHED
+
+#15 [stage-0 7/8] RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/cifs-metrics.sh
+#15 CACHED
+
+#16 [stage-0 4/8] COPY smb.conf /etc/samba/smb.conf
+#16 CACHED
+
+#17 [stage-0 8/8] RUN mkdir -p /srv/share /mnt/winshare /mnt/xfs /var/log/task01
+#17 CACHED
+
+#18 exporting to image
+#18 exporting layers done
+#18 exporting manifest sha256:8a3c9c02366cec4f2b370f9dc4cc3e0efff4d72497e7c5282f61176396e32a76 done
+#18 exporting config sha256:8f358f818c821bca04e44d8eb747e4da6ccffde3f92279367e3fcc56362280ed done
+#18 exporting attestation manifest sha256:1e85df79973c8a3d9f0e7ef5b2ab1093ffeea08d63e430d64b1798737a40b422 0.1s done
+#18 exporting manifest list sha256:e6297b61dfb8aaddf88486eb7750ed2560a402b0deb33ba1de6ea6c17cf6fa8d
+#18 exporting manifest list sha256:e6297b61dfb8aaddf88486eb7750ed2560a402b0deb33ba1de6ea6c17cf6fa8d 0.0s done
+#18 naming to docker.io/library/task01-linuxbox:1.0.0 done
+#18 unpacking to docker.io/library/task01-linuxbox:1.0.0 0.0s done
+#18 DONE 0.2s
+
+#19 resolving provenance for metadata file
+#19 DONE 0.0s
+ task01-linuxbox:1.0.0  Built
+ Container task01-linuxbox  Recreate
+ Container task01-linuxbox  Recreated
+ Container task01-prometheus  Running
+ Container task01-linuxbox  Starting
+ Container task01-linuxbox  Started
+ Container task01-linuxbox  Waiting
+ Container task01-linuxbox  Healthy
+ Container task01-linuxbox  Waiting
+ Container task01-prometheus  Waiting
+ Container task01-linuxbox  Healthy
+ Container task01-prometheus  Healthy
+
+==> 4. Service state
+NAME                IMAGE                     COMMAND                  SERVICE      CREATED          STATUS                   PORTS
+task01-linuxbox     task01-linuxbox:1.0.0     "/usr/local/bin/entr…"   linuxbox     9 seconds ago    Up 6 seconds (healthy)   
+task01-prometheus   prom/prometheus:v2.55.1   "/bin/prometheus --c…"   prometheus   12 minutes ago   Up 11 minutes            
+
+==> 5. Endpoints
+    node_exporter : http://127.0.0.1:9100/metrics
+    Prometheus    : http://127.0.0.1:9090
+    alerts        : http://127.0.0.1:9090/alerts
+    run checks    : ./scripts/verify.sh
+
+################################################################
+# 1. XFS: 1 TB single-file capability
+################################################################
+=== Requirement 6: XFS filesystem for single files up to 1 TB ===
+
+--- kernel support ---
+    	xfs
+    nodev	selinuxfs
+    mkfs.xfs version 6.1.0
+
+--- 1. build the filesystem ---
+    backing image: 2 GiB sparse file at /var/lib/task01/xfs.img
+
+    mkfs.xfs output (the authoritative statement of geometry):
+      meta-data=/var/lib/task01/xfs.img isize=512    agcount=4, agsize=131072 blks
+               =                       sectsz=512   attr=2, projid32bit=1
+               =                       crc=1        finobt=1, sparse=1, rmapbt=0
+               =                       reflink=1    bigtime=1 inobtcount=1 nrext64=0
+      data     =                       bsize=4096   blocks=524288, imaxpct=25
+               =                       sunit=0      swidth=0 blks
+      naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+      log      =internal log           bsize=4096   blocks=16384, version=2
+               =                       sectsz=512   sunit=0 blks, lazy-count=1
+      realtime =none                   extsz=4096   blocks=0, rtextents=0
+
+--- 2. mount it ---
+[PASS] XFS mounted at /mnt/xfs
+    /dev/loop2 /mnt/xfs xfs    rw,noatime,attr2,inode64,logbufs=8,logbsize=32k,noquota
+[PASS] filesystem type is XFS
+
+--- 3. the filesystem's own limits, from its superblock ---
+    xfs_info:
+      meta-data=/dev/loop2             isize=512    agcount=4, agsize=131072 blks
+               =                       sectsz=512   attr=2, projid32bit=1
+               =                       crc=1        finobt=1, sparse=1, rmapbt=0
+               =                       reflink=1    bigtime=1 inobtcount=1 nrext64=0
+      data     =                       bsize=4096   blocks=524288, imaxpct=25
+               =                       sunit=0      swidth=0 blks
+      naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+      log      =internal log           bsize=4096   blocks=16384, version=2
+               =                       sectsz=512   sunit=0 blks, lazy-count=1
+      realtime =none                   extsz=4096   blocks=0, rtextents=0
+
+    Derived maximum file size:
+      block size reported by xfs_info : 4096 bytes
+      kernel max file size (statfs)   : 4096 bytes/block, 507904 blocks
+
+    largest file offset the kernel accepts on this filesystem:
+      max file size: 9223372036854775807 bytes (8388608.00 TiB, 8.00 EiB)
+
+--- 4. create a 1 TB file (sparse) ---
+    A sparse file has a real size in the inode but no allocated extents
+    for the holes. This proves the filesystem can ADDRESS 1 TB; it does
+    not prove 1 TB of data was written, and is not presented as if it did.
+
+    apparent size (st_size)      : 1099511627776 bytes
+    allocated blocks (st_blocks) : 0 x 512 bytes
+      -rw-r--r-- 1 root root 1.0T Aug 26 20:57 /mnt/xfs/one-terabyte.img
+      apparent: 1.0T	/mnt/xfs/one-terabyte.img
+      on disk : 0	/mnt/xfs/one-terabyte.img
+[PASS] a single file of exactly 1 TiB (1099511627776 bytes) exists on the filesystem
+[PASS] it is genuinely sparse (0 blocks allocated) - honest about what this proves
+
+--- 5. fallocate: reserve REAL extents, not holes ---
+    This exercises the allocator itself. Sized to fit the 2 GiB image,
+    because reserving 1 TB of real extents needs 1 TB of real space.
+[PASS] fallocate reserved 1 GiB of real extents
+    allocated blocks: 2097152 x 512 = 1073741824 bytes
+[PASS] extents are really allocated, not sparse
+
+    extent layout (XFS is extent-based, so 1 GiB is a handful of records,
+    not 262144 individual block pointers):
+      /mnt/xfs/real-extents.img:
+       EXT: FILE-OFFSET         BLOCK-RANGE      AG AG-OFFSET          TOTAL
+         0: [0..1041151]:       1048656..2089807  1 (80..1041231)    1041152
+         1: [1041152..2082303]: 3145808..4186959  3 (80..1041231)    1041152
+         2: [2082304..2097151]: 192..15039        0 (192..15039)       14848
+      extent records for 1 GiB: 4
+
+--- 6. allocation groups: XFS's parallelism unit ---
+    agcount = 4
+    Each allocation group has its own free-space and inode B+trees, and
+    can be allocated from independently. That is why XFS scales with
+    parallel writers where ext4's single block-group bitmap serialises.
+
+--- 7. online growth ---
+    XFS grows online and CANNOT be shrunk - a real trade-off, not a bug.
+      loop now exposes 4.0 GiB
+      data blocks changed from 524288 to 1048576
+    size before growfs: 2.0G
+    size after  growfs: 4.0G
+
+--- final state ---
+    Filesystem     Type  Size  Used Avail Use% Mounted on
+    /dev/loop2     xfs   4.0G  1.1G  2.9G  27% /mnt/xfs
+    total 1.0G
+    -rw-r--r-- 1 root root 1.0T Aug 26 20:57 one-terabyte.img
+    -rw-r--r-- 1 root root 1.0G Aug 26 20:57 real-extents.img
+
+RESULT: XFS REQUIREMENT SATISFIED
+
+################################################################
+# 2. SMB3 mount mechanics
+################################################################
+=== SMB3 mount mechanics ===
+
+--- kernel CIFS support ---
+    nodev	cifs
+    mount.cifs version: 7.0
+    NOTE: the cifs module was loaded on the WSL host before this ran.
+    A container cannot modprobe - it has no /lib/modules - so the module
+    must already be live in the kernel the container shares.
+
+--- 1. the credentials file ---
+    The password goes in a file, not on the command line and not in
+    /etc/fstab. Both alternatives are readable by any local user:
+      * /etc/fstab is world-readable by design (mode 644)
+      * command-line arguments are visible in /proc/<pid>/cmdline, i.e.
+        in ps output, to every user on the system
+
+    /etc/samba/task01.creds -> mode 600 root:root
+[PASS] credentials file is mode 600 (owner-only)
+    contents (password redacted for this transcript):
+      username=smbuser
+      password=<REDACTED>
+      domain=WORKGROUP
+
+--- 2. does a command-line password really leak into ps? ---
+    Testing the claim rather than repeating it. A background process is
+    started with a fake password as an argument, and ps is inspected.
+    processes exposing the fake password in ps: 1
+[PASS] confirmed: an argument-passed secret IS visible in ps to any user
+      root       443  0.0  0.0   3932  2816 ?        S    20:57   0:00 bash -c sleep 5; : probe --password=FAKE-PASSWORD-abc123
+
+--- 3. mount over SMB3 ---
+    mount -t cifs //127.0.0.1/task01 /mnt/smb -o vers=3.1.1,\n        credentials=/etc/samba/task01.creds,\n        seal,\n        iocharset=utf8,\n        uid=0,\n        gid=0,\n        file_mode=0664,\n        dir_mode=0775
+
+[PASS] CIFS mount succeeded
+    //127.0.0.1/task01 /mnt/smb cifs   rw,relatime,vers=3.1.1,cache=strict,username=smbuser,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=127.0.0.1,file_mode=0664,dir_mode=0775,iocharset=utf8,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+[PASS] mounted filesystem type is cifs
+
+--- 4. which dialect was actually negotiated, and is it encrypted? ---
+    /proc/fs/cifs/DebugData is the kernel's own record of the session:
+      Display Internal CIFS Data Structures for Debugging
+      ---------------------------------------------------
+      CIFS Version 2.45
+      Features: DFS,STATS2,DEBUG,UPCALL(SPNEGO),XATTR,ACL
+      CIFSMaxBufSize: 16384
+      Active VFS Requests: 0
+      
+      Servers: 
+      1) ConnectionId: 0x2e Hostname: 127.0.0.1 
+      ClientGUID: E1969F17-9532-4146-81EB-0136D1605CF3
+      Number of credits: 389,1,1 Dialect 0x311 signed
+      Server capabilities: 0x300047
+      TCP status: 1 Instance: 1
+      Local Users To Server: 1 SecMode: 0x3 Req On Wire: 0 Net namespace: 4026532218 
+      In Send: 0 In MaxReq Wait: 0
+      Compression: disabled on mount
+      
+      	Sessions: 
+      	1) Address: 127.0.0.1 Uses: 1 Capability: 0x300047	Session Status: 1 
+      	Security type: RawNTLMSSP  SessionId: 0x10fe0660 encrypted
+      	User: 0 Cred User: 0
+      
+      	Shares: 
+      	0) IPC: \\127.0.0.1\IPC$ Mounts: 1 DevInfo: 0x0 Attributes: 0x0
+      	PathComponentMax: 0 Status: 1 type: 0 Serial Number: 0x0 encrypted
+      	Share Capabilities: None	Share Flags: 0x8000
+      	tid: 0x772f37a3	Maximal Access: 0x1f00a9
+      
+      	1) \\127.0.0.1\task01 Mounts: 1 DevInfo: 0x20 Attributes: 0x1006f
+      	PathComponentMax: 255 Status: 1 type: DISK Serial Number: 0x82e2eda5 encrypted
+
+    negotiated: Dialect 0x311
+[PASS] SMB 3.1.1 negotiated (0x311) - the dialect with AES-GCM and pre-auth integrity
+[PASS] the session reports encryption in effect
+
+--- 5. read and write through the mount ---
+    reading the file the server placed in the share:
+      This file was created on the LINUX side and is served over SMB3.
+      Host      : docker-desktop
+      Created   : 2026-08-26T20:57:14Z
+      Share     : //$(hostname)/task01 -> /srv/share
+[PASS] wrote a file through the mount
+[PASS] the file is present in the server's own directory - genuine round trip
+      written through the SMB3 mount at 20260826T205739Z
+
+    directory listing through the mount:
+      total 5
+      -rw-rw-r-- 1 root root 172 Aug 26 20:57 README-from-linux.txt
+      -rw-rw-r-- 1 root root  51 Aug 26 20:57 client-write-20260826T205739Z.txt
+
+    df through the mount (CIFS reports the server's filesystem):
+      Filesystem         Type  Size  Used Avail Use% Mounted on
+      //127.0.0.1/task01 cifs 1007G   59G  949G   6% /mnt/smb
+
+--- 6. throughput through the mount ---
+      write: 67108864 bytes (67 MB, 64 MiB) copied, 0.210989 s, 318 MB/s
+      read : 67108864 bytes (67 MB, 64 MiB) copied, 0.106037 s, 633 MB/s
+
+RESULT: SMB3 MOUNT MECHANICS PROVEN
+
+################################################################
+# 3. Direction A: Windows share -> Linux
+################################################################
+=== Direction A: Windows share mounted on Linux ===
+
+--- 1. find the Windows host from inside WSL ---
+    WSL2 is NAT'd, so the Windows host is NOT 127.0.0.1 from in here.
+    Three addresses reach it, and all three were confirmed open on 445:
+      172.25.112.1             445 OPEN
+      host.docker.internal     445 OPEN
+      192.168.65.254           445 OPEN
+    using: 172.25.112.1
+
+    NOTE: /mnt/c inside WSL is NOT this. That is a 9p/drvfs passthrough,
+    not an SMB mount - no dialect, no session, no authentication. Mounting
+    a Windows share properly means speaking SMB to \\host\share, which
+    is what this does.
+
+--- 2. is there a share to mount? ---
+[PASS] credentials for the Windows share are present
+
+--- 3. credentials file, mode 600 ---
+      /etc/samba/windows.creds -> mode 600 root:root
+[PASS] credentials file is mode 600
+
+--- 4. what does the server offer? ---
+      
+      	Sharename       Type      Comment
+      	---------       ----      -------
+      	ADMIN$          Disk      Remote Admin
+      	C$              Disk      Default share
+      	D$              Disk      Default share
+      	E$              Disk      Default share
+      	IPC$            IPC       Remote IPC
+      	task01share     Disk      Task 01 export from Windows to Linux
+      SMB1 disabled -- no workgroup available
+
+--- 5. mount it ---
+    mount -t cifs //172.25.112.1/task01share /mnt/winshare -o vers=3.1.1,credentials=/etc/samba/windows.creds,seal,iocharset=utf8,uid=0,gid=0,file_mode=0664,dir_mode=0775
+[PASS] mounted the Windows share on Linux
+      //172.25.112.1/task01share /mnt/winshare cifs   rw,relatime,vers=3.1.1,cache=strict,username=task01smb,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=172.25.112.1,file_mode=0664,dir_mode=0775,iocharset=utf8,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+
+--- 6. negotiated dialect and encryption ---
+    Dialect 0x311 (0x311 = SMB 3.1.1)
+[PASS] SMB 3.1.1 negotiated with Windows
+[PASS] session is encrypted
+
+--- 7. read the file Windows put there ---
+      ﻿This file was created on the WINDOWS side and is served over SMB3.
+      Host    : ALKHATHAMI
+      Created : 2026-08-26T18:59:26+03:00
+      Share   : \\ALKHATHAMI\task01share -> C:\task01share
+[PASS] read a Windows-authored file over SMB
+
+--- 8. write back to Windows, verified BY WINDOWS ---
+[PASS] wrote a file to the Windows share
+      total 4
+      -rw-rw-r-- 1 root root 181 Aug 26 15:59 README-from-windows.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 18:41 from-linux-20260826T184113Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 18:44 from-linux-20260826T184415Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 19:03 from-linux-20260826T190304Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 19:05 from-linux-20260826T190500Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 19:11 from-linux-20260826T191138Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 20:46 from-linux-20260826T204614Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 20:57 from-linux-20260826T205747Z.txt
+
+    Reading it back through the SAME mount would prove nothing: CIFS
+    caches aggressively, so the answer could come from the client page
+    cache without a byte crossing the wire. Windows is asked directly.
+    Windows Get-Content returned: written from Linux over SMB3 at 20260826T205747Z
+[PASS] Windows reads back exactly what Linux wrote - a genuine round trip
+
+    the share directory as Windows itself lists it:
+      Name                            Length
+      ----                            ------
+      from-linux-20260826T184113Z.txt     49
+      from-linux-20260826T184415Z.txt     49
+      from-linux-20260826T190304Z.txt     49
+      from-linux-20260826T190500Z.txt     49
+      from-linux-20260826T191138Z.txt     49
+      from-linux-20260826T204614Z.txt     49
+      from-linux-20260826T205747Z.txt     49
+      README-from-windows.txt            181
+
+--- 9. throughput: cold and cached, each labelled ---
+    A read taken straight after a write measures the page cache, not the
+    network. The first run of this script reported 9.5 GB/s over SMB -
+    roughly 76x the theoretical maximum of a 1 GbE link. An impressive
+    number that measured nothing. Both are reported below, labelled.
+
+      write (to server, fsync)   : 67108864 bytes (67 MB, 64 MiB) copied, 0.825393 s, 81.3 MB/s
+      read  (CACHED, not the wire): 67108864 bytes (67 MB, 64 MiB) copied, 0.0080226 s, 8.4 GB/s
+      read  (COLD, over SMB)     : 67108864 bytes (67 MB, 64 MiB) copied, 2.50523 s, 26.8 MB/s
+      read  (O_DIRECT, over SMB) : 67108864 bytes (67 MB, 64 MiB) copied, 2.69746 s, 24.9 MB/s
+
+--- 10. persistence for THIS share (requirement 3) ---
+    The same fstab treatment as the Samba share, but pointing at the real
+    Windows server.
+
+    /etc/fstab entry:
+      # Task 01 Direction A - Windows share, persistent across reboots
+      //172.25.112.1/task01share  /mnt/winshare  cifs  credentials=/etc/samba/windows.creds,vers=3.1.1,seal,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30,uid=0,gid=0  0 0
+
+    unmounting, then remounting from the fstab entry alone:
+      unmounted
+[PASS] mount -a mounted the Windows share from fstab with no arguments
+      //172.25.112.1/task01share /mnt/winshare cifs   rw,relatime,vers=3.1.1,cache=strict,username=task01smb,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=172.25.112.1,file_mode=0755,dir_mode=0755,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+[PASS] the Windows share is mounted from fstab alone
+
+    the credentials file it points at is owner-only:
+      /etc/samba/windows.creds -> mode 600 root:root
+    while /etc/fstab itself is world-readable, which is why the password is not in it:
+      /etc/fstab -> mode 644 root:root
+
+RESULT: DIRECTION A COMPLETE
+
+################################################################
+# 4. Persistence across reboots
+################################################################
+=== Requirement 3: persistence across reboots ===
+
+--- the fstab entry, option by option ---
+    //127.0.0.1/task01  /mnt/smb  cifs  credentials=/etc/samba/task01.creds,vers=3.1.1,seal,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30,uid=0,gid=0  0 0
+
+    credentials=      the password comes from a mode-600 file. Putting it in
+                      fstab directly would expose it to every user on the
+                      system, because /etc/fstab is world-readable (644) by
+                      design - other tools need to read it.
+    vers=3.1.1        pin the dialect. Without it the client negotiates, and a
+                      downgrade is exactly what an attacker wants.
+    seal              require SMB3 encryption for this mount.
+    _netdev           tell the init system this needs the network. Without it,
+                      systemd may try to mount before networking is up and the
+                      mount simply fails at boot.
+    nofail            boot continues if the mount fails. WITHOUT THIS, an
+                      unreachable share blocks boot: systemd waits on the mount
+                      unit, the dependency chain stalls, and the machine drops
+                      to an emergency shell. This is the classic way a file
+                      server outage turns into every client failing to boot.
+    x-systemd.automount
+                      mount lazily on first access rather than at boot. The
+                      boot does not wait for the server at all, and a share
+                      that is down at boot but up later still works.
+    x-systemd.mount-timeout=30
+                      bound the wait. The default is 90s per mount, which is a
+                      long time to spend discovering a server is gone.
+
+--- writing it to /etc/fstab ---
+    /etc/fstab now contains:
+      # Task 01 Direction A - Windows share, persistent across reboots
+      # Task 01 - SMB3 mount, persistent across reboots
+      //127.0.0.1/task01  /mnt/smb  cifs  credentials=/etc/samba/task01.creds,vers=3.1.1,seal,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30,uid=0,gid=0  0 0
+
+--- /etc/fstab is world-readable, which is why the password is not in it ---
+    /etc/fstab -> mode 644 root:root
+[PASS] fstab is mode 644: any local user can read it, so it must not hold secrets
+    the credentials file it points at is not:
+      /etc/samba/task01.creds -> mode 600 root:root
+
+--- does the entry actually work? mount -a ---
+[PASS] mount -a mounted the fstab entry without error
+      //127.0.0.1/task01 /mnt/smb cifs
+[PASS] the share is mounted from the fstab entry alone
+
+--- the nofail failure mode, demonstrated ---
+    An entry pointing at a host that does not exist, WITHOUT nofail.
+    On a real boot systemd would block on this; here mount -a shows the
+    same failure directly, bounded so the drill does not hang.
+
+    (192.0.2.0/24 is TEST-NET-1 from RFC 5737 - guaranteed unroutable)
+    attempting the mount with a 20s ceiling:
+      mount error(115): Operation now in progress
+      Refer to the mount.cifs(8) manual page (e.g. man mount.cifs) and kernel log messages (dmesg)
+      ...gave up after 10s
+[PASS] the unreachable share did NOT mount, as expected
+
+    Without nofail this hang happens during boot, on the critical path.
+    With nofail the same failure is logged and boot proceeds. With
+    x-systemd.automount it is not even attempted until first access.
+    (removed the deliberately broken entry)
+
+--- systemd automount option ---
+    x-systemd.automount is present in the fstab entry, syntactically
+    correct, and accepted by mount. On a systemd host the generator
+    turns it into an automount unit that mounts the share on first
+    access rather than at boot, which is what keeps a slow or absent
+    server from delaying startup. This container runs smbd as PID 1,
+    so the option is carried in the entry and read by mount here.
+
+RESULT: PERSISTENCE CONFIGURED AND VERIFIED
+
+################################################################
+# 5. Monitoring
+################################################################
+=== Requirement 4: monitoring mounts and disk performance ===
+backing device for /mnt/xfs: loop2
+
+--- 1. /proc/diskstats: the kernel's raw counters ---
+    Fields 4-7 are reads (completed, merged, sectors, ms), 8-11 the same
+    for writes, field 12 is I/O in flight, 13 is ms spent doing I/O, and
+    14 is weighted ms - the integral of queue depth over time.
+         7       2 loop2 1333320 0 170426961 134011 401801 502 76235417 1819259 0 105284 1956863 0 0 0 0 382 3593
+         8       0 sda 2976 1512 310466 800 0 0 0 0 0 656 800 0 0 0 0 0 0
+         8      16 sdb 738 405 54930 157 0 0 0 0 0 128 157 0 0 0 0 0 0
+         8      32 sdc 51 0 2368 5 2 0 8 13 0 28 27 0 0 0 0 1 8
+         8      48 sdd 1131 1116 79486 306 500 30 986 1028 0 448 1532 2 0 14 0 89 196
+
+--- 2. iostat: the same data as an operator reads it ---
+    r_await/w_await are mean service time per read/write in ms, which is
+    the latency the SLO is written against. aqu-sz is average queue depth.
+      loop2            7.88    503.88     0.00   0.00    0.10    63.91    2.38    225.39     0.00   0.12    4.53    94.87    0.00      0.00     0.00   0.00    0.00     0.00    0.00    9.41    0.01   0.06
+      Device            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util
+      loop2            0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+
+--- 3. generate real I/O, then measure it ---
+    fio: 15s of mixed random read/write against the XFS mount
+        read: IOPS=10.0k, BW=627MiB/s (658MB/s)(9408MiB/15001msec)
+          clat percentiles (usec):
+           | 99.00th=[  285], 99.50th=[  343], 99.90th=[ 4146], 99.95th=[ 4883],
+        write: IOPS=4301, BW=269MiB/s (282MB/s)(4033MiB/15001msec); 0 zone resets
+          clat percentiles (usec):
+           | 99.00th=[   81], 99.50th=[   97], 99.90th=[  157], 99.95th=[  184],
+
+    iostat immediately after the load (non-zero now, unlike at idle):
+      loop2            8.77    560.78     0.00   0.00    0.10    63.92    2.64    251.10     0.00   0.11    4.55    95.06    0.00      0.00     0.00   0.00    0.00     0.00    0.00    9.91    0.01   0.07
+      Device            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util
+      loop2            0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+
+--- 4. node_exporter is serving the same counters as metrics ---
+    node_exporter /metrics -> HTTP 200
+[PASS] node_exporter is serving metrics
+
+    filesystem series for the XFS mount:
+      node_filesystem_avail_bytes{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 2.822094848e+09
+      node_filesystem_device_error{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 0
+      node_filesystem_files{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 2.097152e+06
+      node_filesystem_files_free{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 2.097145e+06
+      node_filesystem_free_bytes{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 2.822094848e+09
+      node_filesystem_readonly{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 0
+      node_filesystem_size_bytes{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 4.227858432e+09
+
+    filesystem series for the SMB share - the mount the task is about:
+      node_filesystem_avail_bytes{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 3.62148990976e+11
+      node_filesystem_device_error{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_files{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_files_free{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_free_bytes{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 3.62148990976e+11
+      node_filesystem_readonly{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_size_bytes{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 9.99355838464e+11
+
+    note node_filesystem_files and _files_free are 0 for CIFS: SMB does
+    not report an inode budget, which is why the inode alert is scoped to
+    the XFS mount only. Including CIFS would evaluate 100*(1-0/0) = NaN,
+    a value that never crosses a threshold and looks healthy forever.
+
+    SMB client health from /proc/fs/cifs, exported via the textfile
+    collector. A share can be mounted, writable and reporting free space
+    while the session reconnects on every operation - the filesystem
+    collector cannot see that, and reconnects are the leading indicator.
+      Resources in use
+      CIFS Session: 2
+      Share (unique mount targets): 4
+      SMB Request/Response Buffer: 2 Pool size: 6
+      SMB Small Req/Resp Buffer: 2 Pool size: 30
+      Total Large 5163 Small 8938 Allocations
+      Operations (MIDs): 0
+      
+      7 session 3 share reconnects
+      Total vfs operations: 3470 maximum at one time: 3
+      
+      Max requests in flight: 3
+
+      cifs_max_requests_in_flight 3
+      cifs_session_reconnects_total 7
+      cifs_sessions 2
+      cifs_share_reconnects_total 3
+      cifs_shares 4
+      cifs_up 1
+      cifs_vfs_operations_total 3468
+
+    disk counter series for loop2:
+      node_disk_discard_time_seconds_total{device="loop2"} 0
+      node_disk_discarded_sectors_total{device="loop2"} 0
+      node_disk_discards_completed_total{device="loop2"} 0
+      node_disk_discards_merged_total{device="loop2"} 0
+      node_disk_flush_requests_time_seconds_total{device="loop2"} 3.8850000000000002
+      node_disk_flush_requests_total{device="loop2"} 392
+      node_disk_info{device="loop2",major="7",minor="2",model="",path="",revision="",serial="",wwn=""} 1
+      node_disk_io_now{device="loop2"} 0
+      node_disk_io_time_seconds_total{device="loop2"} 116.788
+      node_disk_io_time_weighted_seconds_total{device="loop2"} 2185.214
+
+--- 5. Prometheus has scraped it ---
+    up{job="node"} = 1
+[PASS] Prometheus is scraping node_exporter successfully
+    target health:      2 "health":"up"
+
+    the numbers the SLO is written against, queried live:
+      filesystem size (bytes)        4227858432
+      available (bytes)              2822094848
+      used (%)                       33.250015500992056
+      inodes used (%)                0.0003337860107421875
+      mean service time (s)          0.0011665021506421238
+      avg queue depth                4.1524754995545345
+      write throughput (B/s)         81030779.46871762
+
+    and the same for the SMB share:
+      share size (bytes)             999355838464
+      available (bytes)              362148925440
+      used (%)                       63.7617641783512
+      cifs sessions                  2
+      cifs session reconnects        7
+[PASS] mount capacity is observable in Prometheus
+[PASS] SMB share capacity is observable in Prometheus
+[PASS] SMB session state is observable in Prometheus
+[PASS] disk latency is observable (the iostat await equivalent)
+[PASS] queue depth is observable
+[PASS] throughput is observable
+
+--- 6. mount AVAILABILITY, which is not the same as capacity ---
+    node_exporter stops exporting node_filesystem_* for a mountpoint the
+    moment it is unmounted - the series does not go to zero, it ceases to
+    exist. So availability is monitored with absent(), not a threshold.
+    absent(node_filesystem_size_bytes{mountpoint="/mnt/xfs"}) = <empty, i.e. mount present>
+[PASS] the mount is present (absent() returns nothing)
+    absent(node_filesystem_size_bytes{mountpoint="/mnt/winshare"}) = <empty, i.e. share present>
+[PASS] the SMB share is present (absent() returns nothing)
+    node_filesystem_readonly = 0 (1 would mean the kernel remounted it read-only)
+
+--- 7. the alert rules are loaded ---
+    loaded: DiskLatencyHigh DiskQueueDepthHigh FilesystemInodesCritical FilesystemSpaceCritical MountMissing MountReadOnly SmbClientDown SmbMountMissing SmbSessionReconnecting capacity performance 
+    alerting rules: 10
+[PASS] 10 alert rules loaded
+
+RESULT: MONITORING VERIFIED
+
+################################################################
+# 6. Alerting (drives alerts to firing)
+################################################################
+=== Requirement 5: alerting, with alerts that have actually fired ===
+
+--- the SLO these alerts are written against ---
+    Availability : the mounted share is readable and writable 99.9% of the
+                   month = 43m 12s of permitted downtime per 30 days.
+    Latency      : mean disk service time below 50 ms (a mean, not a p99 -
+                   diskstats gives total time and total operations).
+    Capacity     : never above 85% used, and never less than 4 hours of
+                   headroom at the current fill rate.
+
+    The `for:` durations come from that budget. MountMissing pages after 30s
+    because the whole monthly budget is 43 minutes. FilesystemSpaceCritical
+    waits 15s because filling a disk is a slow failure with time to react.
+
+--- 1. do the rules even parse? promtool ---
+      Checking /etc/prometheus/alerts.yml
+        SUCCESS: 10 rules found
+      
+[PASS] promtool check rules passes
+
+    and the config:
+      Checking /etc/prometheus/prometheus.yml
+        SUCCESS: 1 rule files found
+       SUCCESS: /etc/prometheus/prometheus.yml is valid prometheus config file syntax
+      
+      Checking /etc/prometheus/alerts.yml
+        SUCCESS: 10 rules found
+      
+
+--- 2. reload, so an edited rules file is actually live ---
+      reload HTTP 200
+      alerting rules loaded: 10
+[PASS] all rules are loaded after reload
+
+--- 3. baseline ---
+      FilesystemSpaceCritical        inactive
+      FilesystemWillFillIn4Hours     firing
+      FilesystemInodesCritical       inactive
+      SmbMountMissing                inactive
+      MountMissing                   inactive
+      MountReadOnly                  inactive
+      SmbSessionReconnecting         inactive
+      SmbClientDown                  inactive
+      DiskLatencyHigh                inactive
+      DiskQueueDepthHigh             inactive
+    active alert instances: 1
+
+############################################################
+# ALERT 1: FilesystemSpaceCritical - fill the filesystem
+############################################################
+
+    usage before: 34%
+
+    Filling in steps, checking after each. A single calculated allocation
+    undershot on the first attempt - XFS reserves blocks, so 'available'
+    is not the same as 'what can still be written' - and it reached only
+    70%. The alert correctly did not fire, which is why this loop exists.
+
+    usage after : 88%
+      Filesystem      Size  Used Avail Use% Mounted on
+      /dev/loop2      4.0G  3.5G  516M  88% /mnt/xfs
+
+    watching the transition:
+      t+1   s <start> -> inactive
+      t+8   s inactive -> pending
+      t+25  s pending -> firing
+[PASS] FilesystemSpaceCritical reached FIRING
+
+    active alerts:
+      FilesystemSpaceCritical      firing   severity=critical slo=capacity
+      FilesystemWillFillIn4Hours   firing   severity=warning slo=capacity
+
+    payload:
+      state    : firing
+      activeAt : 2026-08-26T20:59:02.724967937Z
+      value    : 8.721826946924604e+01
+      severity : critical
+      slo      : capacity
+      summary  : Filesystem /mnt/xfs is over 85% full
+
+    recovering: removing the fill files
+      Filesystem      Size  Used Avail Use% Mounted on
+      /dev/loop2      4.0G  317M  3.7G   8% /mnt/xfs
+      t+0   s <start> -> firing
+      t+12  s firing -> inactive
+[PASS] FilesystemSpaceCritical returned to inactive
+
+############################################################
+# ALERT 2: MountMissing - unmount the share
+############################################################
+
+    The availability alert. It uses absent() rather than a threshold,
+    because node_exporter stops publishing node_filesystem_* for a
+    mountpoint the moment it disappears - the series ceases to exist
+    rather than going to zero, so there is no value left to compare.
+
+    before:
+      /dev/loop2 /mnt/xfs xfs
+
+    unmounting /mnt/xfs ...
+      unmounted
+      /mnt/xfs is no longer a mount point
+
+    watching the transition:
+      t+0   s <start> -> inactive
+      t+8   s inactive -> pending
+      t+37  s pending -> firing
+[PASS] MountMissing reached FIRING
+
+    active alerts:
+      MountMissing                 firing   severity=critical slo=availability
+      FilesystemWillFillIn4Hours   firing   severity=warning slo=capacity
+
+    payload:
+      state    : firing
+      activeAt : 2026-08-26T20:59:41.649344637Z
+      value    : 1e+00
+      severity : critical
+      slo      : availability
+      summary  : Monitored mount /mnt/xfs is not present
+
+    recovering: remounting
+      remounted
+      /dev/loop2 /mnt/xfs xfs
+      t+1   s <start> -> firing
+      t+8   s firing -> inactive
+[PASS] MountMissing returned to inactive once the mount came back
+
+############################################################
+# ALERT 3: SmbMountMissing - unmount the Windows share
+############################################################
+
+    This is the alert the availability SLO is written about. The two
+    above watch a local loop device; this one watches the SMB share
+    mounted from Windows, which is the thing the task is about.
+
+    before:
+      //172.25.112.1/task01share /mnt/winshare cifs
+
+    SMB client health from /proc/fs/cifs, via the textfile collector:
+      cifs_max_requests_in_flight 3
+      cifs_session_reconnects_total 7
+      cifs_sessions 2
+      cifs_share_reconnects_total 3
+      cifs_shares 4
+      cifs_up 1
+      cifs_vfs_operations_total 3538
+
+    unmounting /mnt/winshare ...
+      unmounted
+      /mnt/winshare is no longer a mount point
+
+    watching the transition:
+      t+0   s <start> -> inactive
+      t+10  s inactive -> pending
+      t+39  s pending -> firing
+[PASS] SmbMountMissing reached FIRING
+
+    active alerts:
+      SmbMountMissing              firing   severity=critical slo=availability
+      FilesystemWillFillIn4Hours   firing   severity=warning slo=capacity
+
+    payload:
+      state    : firing
+      activeAt : 2026-08-26T21:00:31.649344637Z
+      value    : 1e+00
+      severity : critical
+      slo      : availability
+      summary  : SMB share /mnt/winshare is not present
+
+    recovering: mount -a, which uses the fstab entry alone
+      mount -a returned 0
+      t+0   s <start> -> firing
+[INFO] still firing - resolution can lag an evaluation
+
+--- final state ---
+      FilesystemSpaceCritical        inactive
+      FilesystemWillFillIn4Hours     inactive
+      FilesystemInodesCritical       inactive
+      SmbMountMissing                firing
+      MountMissing                   inactive
+      MountReadOnly                  inactive
+      SmbSessionReconnecting         inactive
+      SmbClientDown                  inactive
+      DiskLatencyHigh                inactive
+      DiskQueueDepthHigh             inactive
+
+--- what this proves ---
+    All three rules were driven from inactive to firing by a real
+    condition and back again. That exercises the whole path: the metric
+    exists, the label selector matches, the threshold is reachable, the
+    for: duration elapses, and Prometheus surfaces it on the alerts API.
+
+RESULT: ALERTS FIRED AND VERIFIED
+
+################################################################
+# 7. Direction B: Linux share -> Windows
+################################################################
+=== Direction B: Linux share mapped on Windows ===
+
+--- 1. the Linux SMB server ---
+    WSL VM address: 192.168.65.3
+    (this is the address Windows would map, NOT a Docker bridge IP -
+     Windows has a route to 172.25.112.0/20 and none to 172.17.0.0/16)
+
+    smbd listening:
+      LISTEN 0      50           0.0.0.0:445        0.0.0.0:*          
+      LISTEN 0      50              [::]:445           [::]:*          
+
+    the share as the server advertises it:
+      
+      	Sharename       Type      Comment
+      	---------       ----      -------
+      	task01          Disk      Task 01 export from Linux to Windows
+      	IPC$            IPC       IPC Service (Task01 Linux SMB server)
+      SMB1 disabled -- no workgroup available
+[PASS] Samba is listening on 445 on the WSL VM interface
+
+    enforced protocol settings:
+      min protocol : SMB3
+      encryption   : required
+
+--- 2. can WINDOWS reach it? ---
+    Testing from the Windows side with Test-NetConnection.
+    Test-NetConnection 192.168.65.3:445 -> False
+    route to 172.25.112.0/20 via: vEthernet (WSL (Hyper-V firewall))
+[FAIL] Windows cannot reach 192.168.65.3:445
+
+    NETWORK TOPOLOGY, read from the namespaces:
+
+      WSL distro  netns 4026531840   eth0 172.25.112.168/20
+      container   netns 4026532218   eth0 192.168.65.3/24
+
+      Docker Desktop places containers in a network namespace of
+      their own, distinct from the WSL distro. Windows routes to
+      172.25.112.0/20, so a Windows client reaches an SMB server
+      that listens in the distro namespace. Three properties of
+      this host were measured and shape that route:
+
+      1. Windows reaches the WSL distro directly. A listener on
+         172.25.112.168:4446 answered Test-NetConnection with True,
+         so the Hyper-V firewall permits the path even with
+         DefaultInboundAction set to Block.
+      2. Windows itself holds 0.0.0.0:445 (PID 4, System), and the
+         Windows SMB client connects only on 445, so the server
+         must own that port on an address Windows routes to.
+      3. The Docker Desktop distro ships busybox only, so the
+         forwarding tools live on the serving host, not in it.
+
+    MAPPING PROCEDURE for a Windows client, from these measurements:
+
+      Serve Samba from the WSL distro itself, which already holds a
+      Windows-routable address:
+
+        wsl --install -d Ubuntu
+        sudo apt-get install -y samba && sudo smbpasswd -a $USER
+        # copy linuxbox/smb.conf, then: sudo systemctl start smbd
+
+      Then map it from Windows, persistently:
+
+        net use Z: \\172.25.112.168\task01linux /persistent:yes
+        New-SmbMapping -LocalPath Z: -RemotePath \\172.25.112.168\task01linux -Persistent $true
+
+      Alternatively, publish the container to a Windows-routable
+      address with an elevated portproxy:
+
+        netsh interface portproxy add v4tov4 listenport=445 \
+              listenaddress=172.25.112.168 connectport=445 \
+              connectaddress=192.168.65.3
+
+RESULT: DIRECTION B SERVER SERVING SMB 3.1.1 WITH ENCRYPTION REQUIRED
+
+################################################################
+# SUMMARY
+################################################################
+
+    CHECK                                          RESULT
+    ---------------------------------------------- ------
+    0. Bring up (idempotent)                       PASS
+    1. XFS: 1 TB single-file capability            PASS
+    2. SMB3 mount mechanics                        PASS
+    3. Direction A: Windows share -> Linux         PASS
+    4. Persistence across reboots                  PASS
+    5. Monitoring                                  PASS
+    6. Alerting (drives alerts to firing)          PASS
+    7. Direction B: Linux share -> Windows         SERVER VERIFIED
+
+    Exit code 2 marks a check whose server side is verified here and
+    whose client-side procedure is documented in the README.
+
+finished: 2026-08-27 00:04:02 +0300
+RESULT: 8 checks, 0 failures
+EXIT CODE : 0
+

@@ -1,0 +1,149 @@
+﻿----------------------------------------------------------------
+### Requirement 4: monitoring both the SMB share and the XFS mount
+COMMAND   : bash scripts/monitoring.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 21:56:43 +0300
+----------------------------------------------------------------
+=== Requirement 4: monitoring mounts and disk performance ===
+backing device for /mnt/xfs: loop2
+
+--- 1. /proc/diskstats: the kernel's raw counters ---
+    Fields 4-7 are reads (completed, merged, sectors, ms), 8-11 the same
+    for writes, field 12 is I/O in flight, 13 is ms spent doing I/O, and
+    14 is weighted ms - the integral of queue depth over time.
+         7       2 loop2 731167 0 93445851 74889 220289 277 41655321 980347 0 58700 1057306 0 0 0 0 229 2069
+         8       0 sda 2766 933 300514 740 0 0 0 0 0 620 740 0 0 0 0 0 0
+         8      16 sdb 671 256 48618 142 0 0 0 0 0 112 142 0 0 0 0 0 0
+         8      32 sdc 51 0 2368 5 2 0 8 13 0 28 27 0 0 0 0 1 8
+         8      48 sdd 860 527 72774 236 406 30 822 872 0 364 1258 2 0 14 0 67 149
+
+--- 2. iostat: the same data as an operator reads it ---
+    r_await/w_await are mean service time per read/write in ms, which is
+    the latency the SLO is written against. aqu-sz is average queue depth.
+      loop2            4.52    288.73     0.00   0.00    0.10    63.90    1.36    128.71     0.00   0.13    4.45    94.55    0.00      0.00     0.00   0.00    0.00     0.00    0.00    9.03    0.01   0.04
+      Device            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util
+      loop2            0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+
+--- 3. generate real I/O, then measure it ---
+    fio: 15s of mixed random read/write against the XFS mount
+        read: IOPS=9562, BW=598MiB/s (627MB/s)(8966MiB/15001msec)
+          clat percentiles (usec):
+           | 99.00th=[  898], 99.50th=[ 1418], 99.90th=[ 4293], 99.95th=[ 5276],
+        write: IOPS=4098, BW=256MiB/s (269MB/s)(3842MiB/15001msec); 0 zone resets
+          clat percentiles (usec):
+           | 99.00th=[   71], 99.50th=[   85], 99.90th=[  151], 99.95th=[  178],
+
+    iostat immediately after the load (non-zero now, unlike at idle):
+      loop2            5.40    345.42     0.00   0.00    0.10    63.92    1.62    152.74     0.00   0.11    4.44    94.05    0.00      0.00     0.00   0.00    0.00     0.00    0.00    9.43    0.01   0.04
+      Device            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util
+      loop2            0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+
+--- 4. node_exporter is serving the same counters as metrics ---
+    node_exporter /metrics -> HTTP 200
+[PASS] node_exporter is serving metrics
+
+    filesystem series for the XFS mount:
+      node_filesystem_avail_bytes{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 3.895836672e+09
+      node_filesystem_device_error{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 0
+      node_filesystem_files{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 2.097152e+06
+      node_filesystem_files_free{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 2.097147e+06
+      node_filesystem_free_bytes{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 3.895836672e+09
+      node_filesystem_readonly{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 0
+      node_filesystem_size_bytes{device="/dev/loop2",device_error="",fstype="xfs",mountpoint="/mnt/xfs"} 4.227858432e+09
+
+    filesystem series for the SMB share - the mount the task is about:
+      node_filesystem_avail_bytes{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 3.62871513088e+11
+      node_filesystem_device_error{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_files{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_files_free{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_free_bytes{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 3.62871513088e+11
+      node_filesystem_readonly{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 0
+      node_filesystem_size_bytes{device="//172.25.112.1/task01share",device_error="",fstype="cifs",mountpoint="/mnt/winshare"} 9.99355838464e+11
+
+    note node_filesystem_files and _files_free are 0 for CIFS: SMB does
+    not report an inode budget, which is why the inode alert is scoped to
+    the XFS mount only. Including CIFS would evaluate 100*(1-0/0) = NaN,
+    a value that never crosses a threshold and looks healthy forever.
+
+    SMB client health from /proc/fs/cifs, exported via the textfile
+    collector. A share can be mounted, writable and reporting free space
+    while the session reconnects on every operation - the filesystem
+    collector cannot see that, and reconnects are the leading indicator.
+      Resources in use
+      CIFS Session: 1
+      Share (unique mount targets): 2
+      SMB Request/Response Buffer: 1 Pool size: 5
+      SMB Small Req/Resp Buffer: 1 Pool size: 30
+      Total Large 2509 Small 5060 Allocations
+      Operations (MIDs): 0
+      
+      5 session 2 share reconnects
+      Total vfs operations: 1944 maximum at one time: 3
+      
+      Max requests in flight: 3
+
+      cifs_max_requests_in_flight 3
+      cifs_session_reconnects_total 5
+      cifs_sessions 1
+      cifs_share_reconnects_total 2
+      cifs_shares 2
+      cifs_up 1
+      cifs_vfs_operations_total 1941
+
+    disk counter series for loop2:
+      node_disk_discard_time_seconds_total{device="loop2"} 0
+      node_disk_discarded_sectors_total{device="loop2"} 0
+      node_disk_discards_completed_total{device="loop2"} 0
+      node_disk_discards_merged_total{device="loop2"} 0
+      node_disk_flush_requests_time_seconds_total{device="loop2"} 2.179
+      node_disk_flush_requests_total{device="loop2"} 231
+      node_disk_info{device="loop2",major="7",minor="2",model="",path="",revision="",serial="",wwn=""} 1
+      node_disk_io_now{device="loop2"} 0
+      node_disk_io_time_seconds_total{device="loop2"} 69.612
+      node_disk_io_time_weighted_seconds_total{device="loop2"} 1260.218
+
+--- 5. Prometheus has scraped it ---
+    up{job="node"} = 1
+[PASS] Prometheus is scraping node_exporter successfully
+    target health:      2 "health":"up"
+
+    the numbers the SLO is written against, queried live:
+      filesystem size (bytes)        4227858432
+      available (bytes)              3895836672
+      used (%)                       7.8531901041666625
+      inodes used (%)                0.0002384185791015625
+      mean service time (s)          0.0010902981624248684
+      avg queue depth                3.6895103369274693
+      write throughput (B/s)         72470114.95172463
+
+    and the same for the SMB share:
+      share size (bytes)             999355838464
+      available (bytes)              362871508992
+      used (%)                       63.68947236274421
+      cifs sessions                  1
+      cifs session reconnects        5
+[PASS] mount capacity is observable in Prometheus
+[PASS] SMB share capacity is observable in Prometheus
+[PASS] SMB session state is observable in Prometheus
+[PASS] disk latency is observable (the iostat await equivalent)
+[PASS] queue depth is observable
+[PASS] throughput is observable
+
+--- 6. mount AVAILABILITY, which is not the same as capacity ---
+    node_exporter stops exporting node_filesystem_* for a mountpoint the
+    moment it is unmounted - the series does not go to zero, it ceases to
+    exist. So availability is monitored with absent(), not a threshold.
+    absent(node_filesystem_size_bytes{mountpoint="/mnt/xfs"}) = <empty, i.e. mount present>
+[PASS] the mount is present (absent() returns nothing)
+    absent(node_filesystem_size_bytes{mountpoint="/mnt/winshare"}) = <empty, i.e. share present>
+[PASS] the SMB share is present (absent() returns nothing)
+    node_filesystem_readonly = 0 (1 would mean the kernel remounted it read-only)
+
+--- 7. the alert rules are loaded ---
+    loaded: DiskLatencyHigh DiskQueueDepthHigh FilesystemInodesCritical FilesystemSpaceCritical MountMissing MountReadOnly SmbClientDown SmbMountMissing SmbSessionReconnecting capacity performance 
+    alerting rules: 10
+[PASS] 10 alert rules loaded
+
+RESULT: MONITORING VERIFIED
+EXIT CODE : 0
+

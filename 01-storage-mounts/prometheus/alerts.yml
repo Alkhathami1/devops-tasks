@@ -1,0 +1,201 @@
+# Alert rules for Task 01, tied to an explicit service level objective.
+#
+# SLO (stated so the alerts can be judged against something):
+#
+#   Availability : the mounted share is readable and writable 99.9% of the
+#                  month. That is 43m 12s of permitted downtime per 30 days.
+#   Latency      : mean disk service time below 50 ms. The SLO an operator
+#                  would rather have is a p99, but node_exporter's diskstats
+#                  counters give total time and total operations, so a mean is
+#                  what is actually computable here. Stated as a mean because
+#                  that is what the rule measures.
+#   Capacity     : the filesystem never exceeds 85% used, and never has less
+#                  than 4 hours of headroom at the current fill rate.
+#
+# Thresholds are derived from the SLO rather than picked for roundness. The
+# `for:` durations are the error budget spent before paging: an availability
+# breach pages after 30s because the budget is only 43 minutes a month, while a
+# capacity breach can wait 15-30s because filling a disk is a slow failure.
+#
+# SCOPE
+# -----
+# Two mounts are watched, and the distinction matters:
+#
+#   /mnt/winshare  the SMB share from Windows. This is the subject of the
+#                  assignment and of the availability SLO above.
+#   /mnt/xfs       the local XFS filesystem built for the 1 TB single-file
+#                  requirement.
+#
+# An earlier version of this file watched only /mnt/xfs while the SLO text
+# talked about "the share". The rules were real and they were pointed at the
+# wrong filesystem.
+
+groups:
+  - name: mount-availability
+    interval: 5s
+    rules:
+      # node_exporter stops exporting node_filesystem_* series for a mountpoint
+      # the moment it disappears, so `absent()` is the signal that a mount has
+      # gone away. A gauge going to zero would NOT catch it - the series simply
+      # stops existing.
+      #
+      # absent() is per-rule, not per-series: a regex matching both mounts would
+      # only fire when BOTH vanished. Each mount therefore gets its own rule.
+      - alert: SmbMountMissing
+        expr: absent(node_filesystem_size_bytes{mountpoint="/mnt/winshare"})
+        for: 30s
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "SMB share /mnt/winshare is not present"
+          description: >-
+            node_exporter is no longer reporting a filesystem at /mnt/winshare.
+            The share has been unmounted, the server is unreachable, or the
+            session was torn down. Against a 99.9% monthly availability target
+            this consumes error budget at 1 minute per minute.
+
+      - alert: MountMissing
+        expr: absent(node_filesystem_size_bytes{mountpoint="/mnt/xfs"})
+        for: 30s
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "Monitored mount /mnt/xfs is not present"
+          description: >-
+            node_exporter is no longer reporting a filesystem at /mnt/xfs.
+            The mount has been removed, unmounted or the exporter cannot see it.
+
+      - alert: MountReadOnly
+        expr: node_filesystem_readonly{mountpoint=~"/mnt/(xfs|winshare)"} == 1
+        for: 30s
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "Mount {{ $labels.mountpoint }} has been remounted read-only"
+          description: >-
+            The kernel remounts a filesystem read-only when it hits an I/O
+            error it cannot recover from. Writes are failing even though the
+            mount still exists, which a presence check alone would miss.
+
+      # The SMB-specific signal. A share can be mounted, writable and reporting
+      # free space while the client reconnects on every operation; the
+      # filesystem collector cannot see that, so this reads the counter in
+      # /proc/fs/cifs/Stats through the textfile collector.
+      - alert: SmbSessionReconnecting
+        expr: rate(cifs_session_reconnects_total[2m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: "SMB client is reconnecting sessions"
+          description: >-
+            {{ $value | printf "%.3f" }} session reconnects per second sustained.
+            Reconnects rise before throughput falls and long before the mount
+            disappears, so this catches a degrading link while it is still
+            serving traffic.
+
+      - alert: SmbClientDown
+        expr: cifs_up == 0
+        for: 30s
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "The cifs kernel module is not loaded"
+          description: >-
+            /proc/fs/cifs/Stats is unreadable, so no SMB mount can exist. In a
+            container this usually means the module was never loaded into the
+            shared kernel.
+
+  - name: capacity
+    interval: 5s
+    rules:
+      - alert: FilesystemSpaceCritical
+        expr: >-
+          100 * (1 - node_filesystem_avail_bytes{mountpoint=~"/mnt/(xfs|winshare)"}
+                   / node_filesystem_size_bytes{mountpoint=~"/mnt/(xfs|winshare)"}) > 85
+        for: 15s
+        labels:
+          severity: critical
+          slo: capacity
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} is over 85% full"
+          description: >-
+            {{ $value | printf "%.1f" }}% used. Past 85% XFS allocation starts
+            to fragment noticeably, and the remaining headroom is small enough
+            that a single large write can fill it.
+
+      - alert: FilesystemWillFillIn4Hours
+        expr: >-
+          predict_linear(node_filesystem_avail_bytes{mountpoint=~"/mnt/(xfs|winshare)"}[10m], 4*3600) < 0
+        for: 30s
+        labels:
+          severity: warning
+          slo: capacity
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} will fill within 4 hours at the current rate"
+          description: >-
+            A rate-of-change alert rather than a threshold. A disk filling
+            steadily is caught here hours before it crosses 85%, which is the
+            difference between a scheduled cleanup and an outage.
+
+      # Scoped to /mnt/xfs deliberately. SMB reports no inode counts at all -
+      # node_filesystem_files and node_filesystem_files_free are both 0 for a
+      # CIFS mount - so including it would evaluate 100 * (1 - 0/0) and produce
+      # NaN, which never crosses a threshold and would look like a healthy
+      # filesystem forever.
+      - alert: FilesystemInodesCritical
+        expr: >-
+          100 * (1 - node_filesystem_files_free{mountpoint="/mnt/xfs"}
+                   / node_filesystem_files{mountpoint="/mnt/xfs"}) > 85
+        for: 30s
+        labels:
+          severity: critical
+          slo: capacity
+        annotations:
+          summary: "Filesystem /mnt/xfs is over 85% of its inode budget"
+          description: >-
+            Inode exhaustion produces ENOSPC on a filesystem that still reports
+            free space, which is a genuinely confusing outage. XFS allocates
+            inodes dynamically so this is rarer than on ext4, but not impossible.
+
+  - name: performance
+    interval: 5s
+    rules:
+      # node_disk_*_time_seconds_total accumulates time spent servicing I/O;
+      # dividing by the completed-operation rate gives mean service time. This
+      # is the closest Prometheus equivalent of iostat's `await`.
+      - alert: DiskLatencyHigh
+        expr: >-
+          (rate(node_disk_read_time_seconds_total[1m]) + rate(node_disk_write_time_seconds_total[1m]))
+          /
+          clamp_min(rate(node_disk_reads_completed_total[1m]) + rate(node_disk_writes_completed_total[1m]), 1)
+          > 0.05
+        for: 1m
+        labels:
+          severity: warning
+          slo: latency
+        annotations:
+          summary: "Mean disk service time on {{ $labels.device }} above the 50 ms SLO"
+          description: >-
+            {{ $value | printf "%.3f" }}s mean service time against a 50 ms
+            objective. This is a mean, not a p99 - see the SLO note at the top
+            of this file for why.
+
+      - alert: DiskQueueDepthHigh
+        expr: rate(node_disk_io_time_weighted_seconds_total[1m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          slo: latency
+        annotations:
+          summary: "I/O queue depth on {{ $labels.device }} is sustained above 5"
+          description: >-
+            Weighted I/O time is the integral of queue depth over time, so a
+            rate above 5 means on average more than five requests were queued.
+            Latency follows queue depth, so this fires before the latency SLO
+            is actually breached.

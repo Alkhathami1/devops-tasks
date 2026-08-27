@@ -1,0 +1,204 @@
+﻿----------------------------------------------------------------
+### Requirement 5: alert rules driven to firing, including the SMB share
+COMMAND   : bash scripts/alerts-fire.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 21:53:22 +0300
+----------------------------------------------------------------
+=== Requirement 5: alerting, with alerts that have actually fired ===
+
+--- the SLO these alerts are written against ---
+    Availability : the mounted share is readable and writable 99.9% of the
+                   month = 43m 12s of permitted downtime per 30 days.
+    Latency      : mean disk service time below 50 ms (a mean, not a p99 -
+                   diskstats gives total time and total operations).
+    Capacity     : never above 85% used, and never less than 4 hours of
+                   headroom at the current fill rate.
+
+    The `for:` durations come from that budget. MountMissing pages after 30s
+    because the whole monthly budget is 43 minutes. FilesystemSpaceCritical
+    waits 15s because filling a disk is a slow failure with time to react.
+
+--- 1. do the rules even parse? promtool ---
+      Checking /etc/prometheus/alerts.yml
+        SUCCESS: 10 rules found
+      
+[PASS] promtool check rules passes
+
+    and the config:
+      Checking /etc/prometheus/prometheus.yml
+        SUCCESS: 1 rule files found
+       SUCCESS: /etc/prometheus/prometheus.yml is valid prometheus config file syntax
+      
+      Checking /etc/prometheus/alerts.yml
+        SUCCESS: 10 rules found
+      
+
+--- 2. reload, so an edited rules file is actually live ---
+      reload HTTP 200
+      alerting rules loaded: 10
+[PASS] all rules are loaded after reload
+
+--- 3. baseline ---
+      FilesystemSpaceCritical        inactive
+      FilesystemWillFillIn4Hours     inactive
+      FilesystemInodesCritical       inactive
+      SmbMountMissing                inactive
+      MountMissing                   inactive
+      MountReadOnly                  inactive
+      SmbSessionReconnecting         inactive
+      SmbClientDown                  inactive
+      DiskLatencyHigh                inactive
+      DiskQueueDepthHigh             inactive
+    active alert instances: 0
+
+############################################################
+# ALERT 1: FilesystemSpaceCritical - fill the filesystem
+############################################################
+
+    usage before: 8%
+
+    Filling in steps, checking after each. A single calculated allocation
+    undershot on the first attempt - XFS reserves blocks, so 'available'
+    is not the same as 'what can still be written' - and it reached only
+    70%. The alert correctly did not fire, which is why this loop exists.
+
+    usage after : 88%
+      Filesystem      Size  Used Avail Use% Mounted on
+      /dev/loop2      4.0G  3.5G  516M  88% /mnt/xfs
+
+    watching the transition:
+      t+1   s <start> -> inactive
+      t+11  s inactive -> pending
+      t+25  s pending -> firing
+[PASS] FilesystemSpaceCritical reached FIRING
+
+    active alerts:
+      FilesystemSpaceCritical      firing   severity=critical slo=capacity
+      FilesystemWillFillIn4Hours   pending  severity=warning slo=capacity
+
+    payload:
+      state    : firing
+      activeAt : 2026-08-26T18:53:37.724967937Z
+      value    : 8.721826946924604e+01
+      severity : critical
+      slo      : capacity
+      summary  : Filesystem /mnt/xfs is over 85% full
+
+    recovering: removing the fill files
+      Filesystem      Size  Used Avail Use% Mounted on
+      /dev/loop2      4.0G  317M  3.7G   8% /mnt/xfs
+      t+0   s <start> -> firing
+      t+12  s firing -> inactive
+[PASS] FilesystemSpaceCritical returned to inactive
+
+############################################################
+# ALERT 2: MountMissing - unmount the share
+############################################################
+
+    The availability alert. It uses absent() rather than a threshold,
+    because node_exporter stops publishing node_filesystem_* for a
+    mountpoint the moment it disappears - the series ceases to exist
+    rather than going to zero, so there is no value left to compare.
+
+    before:
+      /dev/loop2 /mnt/xfs xfs
+
+    unmounting /mnt/xfs ...
+      unmounted
+      /mnt/xfs is no longer a mount point
+
+    watching the transition:
+      t+1   s <start> -> inactive
+      t+8   s inactive -> pending
+      t+38  s pending -> firing
+[PASS] MountMissing reached FIRING
+
+    active alerts:
+      MountMissing                 firing   severity=critical slo=availability
+      FilesystemWillFillIn4Hours   firing   severity=warning slo=capacity
+
+    payload:
+      state    : firing
+      activeAt : 2026-08-26T18:54:16.649344637Z
+      value    : 1e+00
+      severity : critical
+      slo      : availability
+      summary  : Monitored mount /mnt/xfs is not present
+
+    recovering: remounting
+      remounted
+      /dev/loop2 /mnt/xfs xfs
+      t+1   s <start> -> firing
+      t+10  s firing -> inactive
+[PASS] MountMissing returned to inactive once the mount came back
+
+############################################################
+# ALERT 3: SmbMountMissing - unmount the Windows share
+############################################################
+
+    This is the alert the availability SLO is written about. The two
+    above watch a local loop device; this one watches the SMB share
+    mounted from Windows, which is the thing the task is about.
+
+    before:
+      //172.25.112.1/task01share /mnt/winshare cifs
+
+    SMB client health from /proc/fs/cifs, via the textfile collector:
+      cifs_max_requests_in_flight 3
+      cifs_session_reconnects_total 5
+      cifs_sessions 1
+      cifs_share_reconnects_total 2
+      cifs_shares 2
+      cifs_up 1
+      cifs_vfs_operations_total 1908
+
+    unmounting /mnt/winshare ...
+      unmounted
+      /mnt/winshare is no longer a mount point
+
+    watching the transition:
+      t+0   s <start> -> inactive
+      t+7   s inactive -> pending
+      t+37  s pending -> firing
+[PASS] SmbMountMissing reached FIRING
+
+    active alerts:
+      SmbMountMissing              firing   severity=critical slo=availability
+      FilesystemWillFillIn4Hours   firing   severity=warning slo=capacity
+
+    payload:
+      state    : firing
+      activeAt : 2026-08-26T18:55:06.649344637Z
+      value    : 1e+00
+      severity : critical
+      slo      : availability
+      summary  : SMB share /mnt/winshare is not present
+
+    recovering: mount -a, which uses the fstab entry alone
+      mount -a returned 0
+      //172.25.112.1/task01share /mnt/winshare cifs
+      t+0   s <start> -> firing
+      t+7   s firing -> inactive
+[PASS] SmbMountMissing returned to inactive once the share came back
+
+--- final state ---
+      FilesystemSpaceCritical        inactive
+      FilesystemWillFillIn4Hours     firing
+      FilesystemInodesCritical       inactive
+      SmbMountMissing                inactive
+      MountMissing                   inactive
+      MountReadOnly                  inactive
+      SmbSessionReconnecting         inactive
+      SmbClientDown                  inactive
+      DiskLatencyHigh                inactive
+      DiskQueueDepthHigh             inactive
+
+--- what this proves ---
+    All three rules were driven from inactive to firing by a real
+    condition and back again. That exercises the whole path: the metric
+    exists, the label selector matches, the threshold is reachable, the
+    for: duration elapses, and Prometheus surfaces it on the alerts API.
+
+RESULT: ALERTS FIRED AND VERIFIED
+EXIT CODE : 0
+

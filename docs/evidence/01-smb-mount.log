@@ -1,0 +1,110 @@
+﻿----------------------------------------------------------------
+### SMB3 mount mechanics: credentials file, ps leak proof, dialect 0x311, encryption, round trip
+COMMAND   : ./scripts/smb-mount.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 06:18:30 +0300
+----------------------------------------------------------------
+=== SMB3 mount mechanics ===
+
+--- kernel CIFS support ---
+    nodev	cifs
+    mount.cifs version: 7.0
+    NOTE: the cifs module was loaded on the WSL host before this ran.
+    A container cannot modprobe - it has no /lib/modules - so the module
+    must already be live in the kernel the container shares.
+
+--- 1. the credentials file ---
+    The password goes in a file, not on the command line and not in
+    /etc/fstab. Both alternatives are readable by any local user:
+      * /etc/fstab is world-readable by design (mode 644)
+      * command-line arguments are visible in /proc/<pid>/cmdline, i.e.
+        in ps output, to every user on the system
+
+    /etc/samba/task01.creds -> mode 600 root:root
+[PASS] credentials file is mode 600 (owner-only)
+    contents (password redacted for this transcript):
+      username=smbuser
+      password=<REDACTED>
+      domain=WORKGROUP
+
+--- 2. does a command-line password really leak into ps? ---
+    Testing the claim rather than repeating it. A background process is
+    started with a fake password as an argument, and ps is inspected.
+    processes exposing the fake password in ps: 1
+[PASS] confirmed: an argument-passed secret IS visible in ps to any user
+      root      1846  0.0  0.0   3932  2944 ?        S    03:18   0:00 bash -c sleep 5; : probe --password=FAKE-PASSWORD-abc123
+
+--- 3. mount over SMB3 ---
+    mount -t cifs //127.0.0.1/task01 /mnt/smb -o vers=3.1.1,\n        credentials=/etc/samba/task01.creds,\n        seal,\n        iocharset=utf8,\n        uid=0,\n        gid=0,\n        file_mode=0664,\n        dir_mode=0775
+
+[PASS] CIFS mount succeeded
+    //127.0.0.1/task01 /mnt/smb cifs   rw,relatime,vers=3.1.1,cache=strict,username=smbuser,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=127.0.0.1,file_mode=0664,dir_mode=0775,iocharset=utf8,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+[PASS] mounted filesystem type is cifs
+
+--- 4. which dialect was actually negotiated, and is it encrypted? ---
+    /proc/fs/cifs/DebugData is the kernel's own record of the session:
+      Display Internal CIFS Data Structures for Debugging
+      ---------------------------------------------------
+      CIFS Version 2.45
+      Features: DFS,STATS2,DEBUG,UPCALL(SPNEGO),XATTR,ACL
+      CIFSMaxBufSize: 16384
+      Active VFS Requests: 0
+      
+      Servers: 
+      1) ConnectionId: 0x6 Hostname: 127.0.0.1 
+      ClientGUID: 4FA033E6-C030-854A-B63A-BA26767DF06C
+      Number of credits: 389,1,1 Dialect 0x311 signed
+      Server capabilities: 0x300047
+      TCP status: 1 Instance: 1
+      Local Users To Server: 1 SecMode: 0x3 Req On Wire: 0 Net namespace: 4026532218 
+      In Send: 0 In MaxReq Wait: 0
+      Compression: disabled on mount
+      
+      	Sessions: 
+      	1) Address: 127.0.0.1 Uses: 1 Capability: 0x300047	Session Status: 1 
+      	Security type: RawNTLMSSP  SessionId: 0x45cdca55 encrypted
+      	User: 0 Cred User: 0
+      
+      	Shares: 
+      	0) IPC: \\127.0.0.1\IPC$ Mounts: 1 DevInfo: 0x0 Attributes: 0x0
+      	PathComponentMax: 0 Status: 1 type: 0 Serial Number: 0x0 encrypted
+      	Share Capabilities: None	Share Flags: 0x8000
+      	tid: 0xbaf49737	Maximal Access: 0x1f00a9
+      
+      	1) \\127.0.0.1\task01 Mounts: 1 DevInfo: 0x20 Attributes: 0x1006f
+      	PathComponentMax: 255 Status: 1 type: DISK Serial Number: 0x82e2eda5 encrypted
+
+    negotiated: Dialect 0x311
+[PASS] SMB 3.1.1 negotiated (0x311) - the dialect with AES-GCM and pre-auth integrity
+[PASS] the session reports encryption in effect
+
+--- 5. read and write through the mount ---
+    reading the file the server placed in the share:
+      This file was created on the LINUX side and is served over SMB3.
+      Host      : docker-desktop
+      Created   : 2026-08-26T03:12:33Z
+      Share     : //$(hostname)/task01 -> /srv/share
+[PASS] wrote a file through the mount
+[PASS] the file is present in the server's own directory - genuine round trip
+      written through the SMB3 mount at 20260826T031838Z
+
+    directory listing through the mount:
+      total 21
+      -rw-rw-r-- 1 root root 172 Aug 26 03:12 README-from-linux.txt
+      -rw-rw-r-- 1 root root  51 Aug 26 03:16 client-write-20260826T031603Z.txt
+      -rw-rw-r-- 1 root root  51 Aug 26 03:17 client-write-20260826T031707Z.txt
+      -rw-rw-r-- 1 root root  51 Aug 26 03:17 client-write-20260826T031716Z.txt
+      -rw-rw-r-- 1 root root  51 Aug 26 03:17 client-write-20260826T031747Z.txt
+      -rw-rw-r-- 1 root root  51 Aug 26 03:18 client-write-20260826T031838Z.txt
+
+    df through the mount (CIFS reports the server's filesystem):
+      Filesystem         Type  Size  Used Avail Use% Mounted on
+      //127.0.0.1/task01 cifs 1007G   58G  950G   6% /mnt/smb
+
+--- 6. throughput through the mount ---
+      write: 67108864 bytes (67 MB, 64 MiB) copied, 0.203837 s, 329 MB/s
+      read : 67108864 bytes (67 MB, 64 MiB) copied, 0.0986225 s, 680 MB/s
+
+RESULT: SMB3 MOUNT MECHANICS PROVEN
+EXIT CODE : 0
+

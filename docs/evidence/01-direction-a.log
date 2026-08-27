@@ -1,0 +1,119 @@
+﻿----------------------------------------------------------------
+### Direction A: Windows share mounted on Linux, round trip verified by Windows
+COMMAND   : bash scripts/direction-a.sh
+CWD       : /c/Users/abual/devops-tasks/01-storage-mounts
+TIMESTAMP : 2026-08-26 22:11:33 +0300
+----------------------------------------------------------------
+=== Direction A: Windows share mounted on Linux ===
+
+--- 1. find the Windows host from inside WSL ---
+    WSL2 is NAT'd, so the Windows host is NOT 127.0.0.1 from in here.
+    Three addresses reach it, and all three were confirmed open on 445:
+      172.25.112.1             445 OPEN
+      host.docker.internal     445 OPEN
+      192.168.65.254           445 OPEN
+    using: 172.25.112.1
+
+    NOTE: /mnt/c inside WSL is NOT this. That is a 9p/drvfs passthrough,
+    not an SMB mount - no dialect, no session, no authentication. Mounting
+    a Windows share properly means speaking SMB to \\host\share, which
+    is what this does.
+
+--- 2. is there a share to mount? ---
+[PASS] credentials for the Windows share are present
+
+--- 3. credentials file, mode 600 ---
+      /etc/samba/windows.creds -> mode 600 root:root
+[PASS] credentials file is mode 600
+
+--- 4. what does the server offer? ---
+      
+      	Sharename       Type      Comment
+      	---------       ----      -------
+      	ADMIN$          Disk      Remote Admin
+      	C$              Disk      Default share
+      	D$              Disk      Default share
+      	E$              Disk      Default share
+      	IPC$            IPC       Remote IPC
+      	task01share     Disk      Task 01 export from Windows to Linux
+      SMB1 disabled -- no workgroup available
+
+--- 5. mount it ---
+    mount -t cifs //172.25.112.1/task01share /mnt/winshare -o vers=3.1.1,credentials=/etc/samba/windows.creds,seal,iocharset=utf8,uid=0,gid=0,file_mode=0664,dir_mode=0775
+[PASS] mounted the Windows share on Linux
+      //172.25.112.1/task01share /mnt/winshare cifs   rw,relatime,vers=3.1.1,cache=strict,username=task01smb,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=172.25.112.1,file_mode=0664,dir_mode=0775,iocharset=utf8,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+
+--- 6. negotiated dialect and encryption ---
+    Dialect 0x311 (0x311 = SMB 3.1.1)
+[PASS] SMB 3.1.1 negotiated with Windows
+[PASS] session is encrypted
+
+--- 7. read the file Windows put there ---
+      ﻿This file was created on the WINDOWS side and is served over SMB3.
+      Host    : ALKHATHAMI
+      Created : 2026-08-26T18:59:26+03:00
+      Share   : \\ALKHATHAMI\task01share -> C:\task01share
+[PASS] read a Windows-authored file over SMB
+
+--- 8. write back to Windows, verified BY WINDOWS ---
+[PASS] wrote a file to the Windows share
+      total 3
+      -rw-rw-r-- 1 root root 181 Aug 26 15:59 README-from-windows.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 18:41 from-linux-20260826T184113Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 18:44 from-linux-20260826T184415Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 19:03 from-linux-20260826T190304Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 19:05 from-linux-20260826T190500Z.txt
+      -rw-rw-r-- 1 root root  49 Aug 26 19:11 from-linux-20260826T191138Z.txt
+
+    Reading it back through the SAME mount would prove nothing: CIFS
+    caches aggressively, so the answer could come from the client page
+    cache without a byte crossing the wire. Windows is asked directly.
+    Windows Get-Content returned: written from Linux over SMB3 at 20260826T191138Z
+[PASS] Windows reads back exactly what Linux wrote - a genuine round trip
+
+    the share directory as Windows itself lists it:
+      Name                            Length
+      ----                            ------
+      from-linux-20260826T184113Z.txt     49
+      from-linux-20260826T184415Z.txt     49
+      from-linux-20260826T190304Z.txt     49
+      from-linux-20260826T190500Z.txt     49
+      from-linux-20260826T191138Z.txt     49
+      README-from-windows.txt            181
+
+--- 9. throughput: cold and cached, each labelled ---
+    A read taken straight after a write measures the page cache, not the
+    network. The first run of this script reported 9.5 GB/s over SMB -
+    roughly 76x the theoretical maximum of a 1 GbE link. An impressive
+    number that measured nothing. Both are reported below, labelled.
+
+      write (to server, fsync)   : 67108864 bytes (67 MB, 64 MiB) copied, 0.788768 s, 85.1 MB/s
+      read  (CACHED, not the wire): 67108864 bytes (67 MB, 64 MiB) copied, 0.00774955 s, 8.7 GB/s
+      read  (COLD, over SMB)     : 67108864 bytes (67 MB, 64 MiB) copied, 2.58178 s, 26.0 MB/s
+      read  (O_DIRECT, over SMB) : 67108864 bytes (67 MB, 64 MiB) copied, 2.76082 s, 24.3 MB/s
+
+--- 10. persistence for THIS share (requirement 3) ---
+    The same fstab treatment as the Samba share, but pointing at the real
+    Windows server.
+
+    /etc/fstab entry:
+      # Task 01 Direction A - Windows share, persistent across reboots
+      # Task 01 - SMB3 mount, persistent across reboots
+      --
+      # Task 01 Direction A - Windows share, persistent across reboots
+      //172.25.112.1/task01share  /mnt/winshare  cifs  credentials=/etc/samba/windows.creds,vers=3.1.1,seal,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30,uid=0,gid=0  0 0
+
+    unmounting, then remounting from the fstab entry alone:
+      unmounted
+[PASS] mount -a mounted the Windows share from fstab with no arguments
+      //172.25.112.1/task01share /mnt/winshare cifs   rw,relatime,vers=3.1.1,cache=strict,username=task01smb,domain=WORKGROUP,uid=0,forceuid,gid=0,forcegid,addr=172.25.112.1,file_mode=0755,dir_mode=0755,seal,soft,nounix,serverino,mapposix,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,retrans=1,echo_interval=60,actimeo=1,closetimeo=1
+[PASS] the Windows share is mounted from fstab alone
+
+    the credentials file it points at is owner-only:
+      /etc/samba/windows.creds -> mode 600 root:root
+    while /etc/fstab itself is world-readable, which is why the password is not in it:
+      /etc/fstab -> mode 644 root:root
+
+RESULT: DIRECTION A COMPLETE
+EXIT CODE : 0
+

@@ -1,0 +1,24 @@
+# Prometheus configuration for Task 01 storage monitoring.
+
+global:
+  scrape_interval: 5s        # short, so a drill can observe a transition quickly
+  evaluation_interval: 5s
+  external_labels:
+    task: "01-storage-mounts"
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # node_exporter exposes filesystem and disk metrics from the host kernel:
+  #   node_filesystem_*   space and inode usage per mount, and mount presence
+  #   node_disk_*         throughput, IOPS, queue depth and service time
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+        labels:
+          instance: linuxbox
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
