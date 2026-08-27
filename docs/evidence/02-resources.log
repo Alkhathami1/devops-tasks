@@ -1,0 +1,55 @@
+﻿----------------------------------------------------------------
+### CPU/RAM/storage allocation: applied limits and live usage
+COMMAND   : ./scripts/resources.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:27:26 +0300
+----------------------------------------------------------------
+=== Resource allocation (requirement 4) ===
+
+--- host / Docker VM capacity being divided up ---
+    Docker VM CPUs   : 12
+    Docker VM memory : 8285016064 bytes (7901 MiB for all containers)
+    cgroup version   : 2  (v2 is required for reliable memory accounting)
+
+--- applied limits, read back from the daemon ---
+    CONTAINER             MEM_LIMIT     MEM_RESV      CPU_LIMIT      MEMSWAP
+    postgres                  512 M        256 M         1.00 cpu       1024 M
+    backend                   256 M         64 M         0.75 cpu        256 M
+    nginx                     128 M         32 M         0.50 cpu        256 M
+
+    A non-zero value in every column is the proof that the compose
+    deploy.resources block is being enforced, not silently ignored.
+
+    Read the MEMSWAP column carefully. Where it is DOUBLE the memory limit
+    (postgres 512->1024, nginx 128->256) that is Docker's default: a
+    container may use its limit again in swap, so memory pressure degrades
+    into paging rather than an OOM kill. Only the backend sets
+    memswap_limit equal to its memory limit, which disables swap entirely.
+    That is deliberate: without it the RAM-exhaustion drill could page
+    instead of dying and would never produce OOMKilled: true.
+
+--- live usage against those limits ---
+NAME              CPU %     MEM USAGE / LIMIT   MEM %     NET I/O           BLOCK I/O
+task02-postgres   0.03%     36.24MiB / 512MiB   7.08%     7.16kB / 5.4kB    11.2MB / 53.4MB
+task02-backend    0.00%     17.2MiB / 256MiB    6.72%     12.1kB / 11.9kB   20.5kB / 0B
+task02-nginx      0.00%     10.27MiB / 128MiB   8.02%     13kB / 15.4kB     45.1kB / 12.3kB
+
+--- usage under load (200 requests through the proxy) ---
+    load generated; sampling again
+NAME              CPU %     MEM USAGE / LIMIT   MEM %
+task02-postgres   0.02%     36.24MiB / 512MiB   7.08%
+task02-backend    0.03%     19.28MiB / 256MiB   7.53%
+task02-nginx      0.00%     10.4MiB / 128MiB    8.12%
+
+--- storage ---
+    named volume:
+      name=task02-pgdata driver=local scope=local
+      mountpoint: /var/lib/docker/volumes/task02-pgdata/_data
+    size on disk inside the container:
+      46M	/var/lib/postgresql/data
+    image sizes:
+postgres:16  636MB
+task02-backend:1.0.0  254MB
+task02-nginx:1.0.0  73.6MB
+EXIT CODE : 0
+

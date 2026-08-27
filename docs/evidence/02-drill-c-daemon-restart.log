@@ -1,0 +1,60 @@
+﻿----------------------------------------------------------------
+### DRILL C: Docker daemon restart (machine shutdown analogue), unattended recovery
+COMMAND   : ./scripts/drills/06-daemon-restart.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:27:54 +0300
+----------------------------------------------------------------
+=== DRILL C: Docker daemon restart (machine shutdown analogue) ===
+
+--- engine configuration ---
+    Live Restore Enabled: false
+    (false = containers really stop with the daemon, so recovery is genuine)
+
+--- state before ---
+task02-nginx | Up About a minute (healthy)
+task02-backend | Up About a minute (healthy)
+task02-postgres | Up About a minute (healthy)
+    postgres: policy=unless-stopped restarts=0
+    backend: policy=unless-stopped restarts=0
+    nginx: policy=unless-stopped restarts=0
+    marker row written: daemon-restart-1787686076
+    row count before  : 4
+
+--- restarting the Docker daemon ---
+    NOTE: no 'docker compose up' is issued after this point.
+    ✓ Starting Docker Desktop
+
+--- waiting for the daemon to come back ---
+    daemon responding after 19s
+[PASS] Docker daemon came back
+
+--- waiting for the stack to return UNATTENDED ---
+    stack serving again after 20s total
+
+--- state after ---
+task02-nginx | Up 2 seconds (health: starting)
+task02-backend | Up 2 seconds (health: starting)
+task02-postgres | Up 2 seconds (health: starting)
+[PASS] whole stack recovered with no human intervention in 20s
+[PASS] all three services are running again (3/3)
+
+--- did the data survive a cold engine restart? ---
+    row count after: 4 (was 4)
+    marker present : 1
+[PASS] row count preserved across the daemon restart
+[PASS] marker row survived: daemon-restart-1787686076
+
+--- end-to-end through the proxy after recovery ---
+    POST -> {"id":5,"name":"post-restart-1787686097","description":"written after the daemon restart","created_at":"2026-08-25T19:28
+[PASS] writes work again through the full stack
+
+--- ordering was still respected on cold start ---
+    postgres: health=starting startedAt=2026-08-25T19:28:14.418578633Z
+    backend: health=starting startedAt=2026-08-25T19:28:14.403921353Z
+    nginx: health=starting startedAt=2026-08-25T19:28:14.408433834Z
+    (backend depends_on postgres:service_healthy, nginx on backend:service_healthy;
+     a backend that outran Postgres would show up as a crash-loop here)
+
+RESULT: DRILL C PASSED
+EXIT CODE : 0
+

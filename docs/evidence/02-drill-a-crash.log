@@ -1,0 +1,46 @@
+﻿----------------------------------------------------------------
+### DRILL A: SIGKILL vs genuine crash, restart policy and measured downtime
+COMMAND   : ./scripts/drills/01-backend-kill.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:19:36 +0300
+----------------------------------------------------------------
+=== DRILL A: backend failure and unattended recovery ===
+restart policy: unless-stopped
+
+--- A0. kill -9 against PID 1 from INSIDE the container ---
+    (expected: no effect - PID 1 is signal-protected in its own namespace)
+    status=running  pid 9391 -> 9391  RestartCount=0
+[PASS] SIGKILL to PID 1 from inside was ignored, container untouched
+
+--- A1. docker kill (operator action) ---
+    (expected: container stays down; unless-stopped honours operator intent)
+    status=exited  ExitCode=137  RestartCount 0 -> 0
+    proxy -> backend while down: HTTP 000 (502/504 = genuinely gone)
+[PASS] docker kill stopped the container with SIGKILL (exit 137)
+[PASS] restart policy correctly did NOT fire for an operator stop
+[PASS] backend genuinely unreachable through the proxy during the outage
+
+    recovering with 'docker compose up -d' (the documented operator remedy)
+[PASS] stack restored by a single compose command
+
+--- A2. genuine crash: PID 1 exits non-zero ---
+    (expected: restart policy fires, container returns with NO intervention)
+    before: RestartCount=0  hostPID=47132
+            StartedAt=2026-08-25T19:19:53.116251134Z
+{"status":"crashing","pid":1,"exitCode":1}    crash requested at 22:20:00.733
+    status right after crash: running
+
+    after:  RestartCount=1  hostPID=47319
+            StartedAt=2026-08-25T19:20:01.09789168Z
+            status=running  health=starting
+            MEASURED DOWNTIME: 2827 ms (crash -> HTTP 200 through the proxy)
+
+[PASS] RestartCount incremented 0 -> 1
+[PASS] new host PID (47132 -> 47319): a genuinely new process
+[PASS] StartedAt advanced, confirming a real restart
+[PASS] recovered unattended in 2827 ms
+[PASS] database still serving after recovery: 5 rows
+
+RESULT: DRILL A PASSED
+EXIT CODE : 0
+

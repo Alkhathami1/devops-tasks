@@ -1,0 +1,23 @@
+﻿----------------------------------------------------------------
+### Smoke test: DB-backed POST/GET round trip through the reverse proxy
+COMMAND   : ./scripts/smoke-test.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:27:00 +0300
+----------------------------------------------------------------
+=== Smoke test: DB-backed round trip through the proxy ===
+base URL: http://127.0.0.1:8080
+
+[PASS] nginx responds on /healthz -- HTTP 200
+[PASS] frontend HTML served by nginx
+[PASS] backend healthy through the proxy -- {"status":"ok","database":{"reachable":true,"check":true},"service":"backend","uptimeSeconds":22,"pid":1}
+[PASS] backend reports the database reachable
+[PASS] POST /api/items created a row -- id=3
+[PASS] GET /api/items returns the written row -- name=smoke-1787686020-935
+[PASS] the written description round-tripped intact
+[PASS] seeded row 'welcome' present
+[PASS] seeded row 'persistence-probe' present
+[PASS] POST without a name is rejected -- HTTP 400
+
+RESULT: SMOKE TEST PASSED
+EXIT CODE : 0
+

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task 02 — Multi-tier Docker stack</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 52rem; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.6;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  .sub { opacity: .7; margin-top: 0; font-size: .9rem; }
+  .tiers { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: 1.5rem 0; }
+  .tier { border: 1px solid currentColor; border-radius: .5rem; padding: .5rem .75rem; font-size: .85rem; }
+  .arrow { opacity: .5; }
+  .net { font-size: .7rem; opacity: .6; display: block; }
+  button { font: inherit; padding: .4rem .9rem; border-radius: .4rem; cursor: pointer; }
+  input { font: inherit; padding: .4rem .6rem; border-radius: .4rem; border: 1px solid #8888; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: .9rem; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #8883; }
+  #status { font-size: .85rem; padding: .5rem .75rem; border-radius: .4rem; border: 1px solid #8886; }
+  form { display: flex; gap: .5rem; margin-top: 1.5rem; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <h1>Task 02 — Multi-tier Docker stack</h1>
+  <p class="sub">Static frontend served by nginx, which also reverse-proxies <code>/api</code> to the backend.</p>
+
+  <div class="tiers">
+    <span class="tier">browser</span>
+    <span class="arrow">→</span>
+    <span class="tier">nginx + frontend<span class="net">only published port :8080</span></span>
+    <span class="arrow">→</span>
+    <span class="tier">backend API<span class="net">edge-net</span></span>
+    <span class="arrow">→</span>
+    <span class="tier">postgres<span class="net">internal-net (internal: true)</span></span>
+  </div>
+
+  <div id="status">checking…</div>
+
+  <form id="add">
+    <input id="name" placeholder="item name" required>
+    <input id="description" placeholder="description">
+    <button type="submit">POST /api/items</button>
+  </form>
+
+  <table>
+    <thead><tr><th>id</th><th>name</th><th>description</th><th>created</th></tr></thead>
+    <tbody id="rows"><tr><td colspan="4">loading…</td></tr></tbody>
+  </table>
+
+<script>
+const statusEl = document.getElementById('status');
+const rowsEl = document.getElementById('rows');
+
+async function refresh() {
+  try {
+    const health = await fetch('/api-health');
+    const h = await health.json();
+    statusEl.textContent = health.ok
+      ? `backend ${h.status} · database reachable · uptime ${h.uptimeSeconds}s`
+      : `backend ${h.status} · database unreachable`;
+  } catch (e) {
+    statusEl.textContent = 'backend unreachable through the proxy';
+  }
+
+  try {
+    const res = await fetch('/api/items');
+    const data = await res.json();
+    rowsEl.innerHTML = data.items.map((i) =>
+      `<tr><td>${i.id}</td><td>${escapeHtml(i.name)}</td><td>${escapeHtml(i.description)}</td><td>${new Date(i.created_at).toLocaleString()}</td></tr>`
+    ).join('') || '<tr><td colspan="4">no rows</td></tr>';
+  } catch (e) {
+    rowsEl.innerHTML = '<tr><td colspan="4">could not load items</td></tr>';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+document.getElementById('add').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = document.getElementById('name').value;
+  const description = document.getElementById('description').value;
+  await fetch('/api/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description }),
+  });
+  event.target.reset();
+  refresh();
+});
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

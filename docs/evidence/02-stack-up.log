@@ -1,0 +1,136 @@
+﻿----------------------------------------------------------------
+### Bring the whole stack up from nothing (single command, idempotent)
+COMMAND   : ./scripts/up.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 21:24:53 +0300
+----------------------------------------------------------------
+
+==> 1. Configuration
+    .env already present, left untouched
+    database password secret already present, left untouched
+
+==> 2. Build images
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.05kB done
+#1 DONE 0.0s
+
+#2 [backend internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.28kB done
+#2 DONE 0.0s
+
+#3 [nginx internal] load build definition from Dockerfile
+#3 transferring dockerfile: 553B done
+#3 DONE 0.1s
+
+#4 [backend internal] load metadata for docker.io/library/node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+#4 DONE 0.1s
+
+#5 [nginx internal] load metadata for docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#5 DONE 0.1s
+
+#6 [backend internal] load .dockerignore
+#6 transferring context: 2B done
+#6 DONE 0.0s
+
+#7 [nginx internal] load .dockerignore
+#7 transferring context: 2B done
+#7 DONE 0.0s
+
+#8 [backend internal] load build context
+#8 transferring context: 152B done
+#8 DONE 0.0s
+
+#9 [nginx internal] load build context
+#9 transferring context: 91B done
+#9 DONE 0.1s
+
+#10 [nginx 1/3] FROM docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#10 resolve docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#10 resolve docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 0.1s done
+#10 DONE 0.1s
+
+#11 [backend 1/5] FROM docker.io/library/node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+#11 resolve docker.io/library/node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 0.1s done
+#11 DONE 0.1s
+
+#12 [nginx 2/3] COPY nginx.conf /etc/nginx/nginx.conf
+#12 CACHED
+
+#13 [backend 2/5] WORKDIR /app
+#13 CACHED
+
+#14 [backend 4/5] RUN npm install --omit=dev --no-audit --no-fund
+#14 CACHED
+
+#15 [backend 3/5] COPY package.json package-lock.json* ./
+#15 CACHED
+
+#16 [nginx 3/3] COPY html/ /usr/share/nginx/html/
+#16 CACHED
+
+#17 [backend 5/5] COPY src ./src
+#17 CACHED
+
+#18 [backend] exporting to image
+#18 exporting layers done
+#18 exporting manifest sha256:8ff8c7a6a12054ecb142657183c892ad765931963d88b768a646a4d9140249c0 done
+#18 exporting config sha256:f6446db2ca262f0f108198debd04d3eee7c15c41116d8aca7c9659a2793a0b1c
+#18 exporting config sha256:f6446db2ca262f0f108198debd04d3eee7c15c41116d8aca7c9659a2793a0b1c done
+#18 exporting attestation manifest sha256:f850eadc4e38afbca9f106657b3d7563df6b180f3a35e1759f9f11543eac82b3 0.1s done
+#18 exporting manifest list sha256:acd3af68b5cb601baba9f53f9a590f4eb81ec7f0863cd5a66df06f722bad6794
+#18 exporting manifest list sha256:acd3af68b5cb601baba9f53f9a590f4eb81ec7f0863cd5a66df06f722bad6794 0.1s done
+#18 naming to docker.io/library/task02-backend:1.0.0 0.0s done
+#18 unpacking to docker.io/library/task02-backend:1.0.0 0.0s done
+#18 DONE 0.3s
+
+#19 [nginx] exporting to image
+#19 exporting layers 0.0s done
+#19 exporting manifest sha256:40e26fda69ca979a25ed7e33da88fb5b2aa57dcb051c58478f0be13a9f47e33c done
+#19 exporting config sha256:d769974d200f00e5f22baa23f3834d611de683fef96c047b72761b5dac141d71 done
+#19 exporting attestation manifest sha256:98ade4602fe14eac26168a2c8045bd3cee1b11388c98eddbb633191aab7494ea 0.1s done
+#19 exporting manifest list sha256:444658fb514cc136f260ae93c2b76d11a4ec9cd04d16385d713cf2d09cfd5754 0.0s done
+#19 naming to docker.io/library/task02-nginx:1.0.0 done
+#19 unpacking to docker.io/library/task02-nginx:1.0.0 0.0s done
+#19 DONE 0.3s
+
+#20 [backend] resolving provenance for metadata file
+#20 DONE 0.0s
+
+#21 [nginx] resolving provenance for metadata file
+#21 DONE 0.0s
+ task02-backend:1.0.0  Built
+ task02-nginx:1.0.0  Built
+
+==> 3. Start the stack
+ Container task02-postgres  Running
+ Container task02-backend  Recreate
+ Container task02-backend  Recreated
+ Container task02-nginx  Recreate
+ Container task02-nginx  Recreated
+ Container task02-postgres  Waiting
+ Container task02-postgres  Healthy
+ Container task02-backend  Starting
+ Container task02-backend  Started
+ Container task02-backend  Waiting
+ Container task02-backend  Healthy
+ Container task02-nginx  Starting
+ Container task02-nginx  Started
+ Container task02-backend  Waiting
+ Container task02-nginx  Waiting
+ Container task02-postgres  Waiting
+ Container task02-postgres  Healthy
+ Container task02-backend  Healthy
+ Container task02-nginx  Healthy
+
+==> 4. Service state
+NAME              IMAGE                                                                                 COMMAND                  SERVICE    CREATED             STATUS                    PORTS
+task02-backend    task02-backend:1.0.0                                                                  "docker-entrypoint.s…"   backend    14 seconds ago      Up 12 seconds (healthy)   3000/tcp
+task02-nginx      task02-nginx:1.0.0                                                                    "/docker-entrypoint.…"   nginx      13 seconds ago      Up 6 seconds (healthy)    0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+task02-postgres   postgres:16@sha256:c1b3783309b6499c795eed7c20135a1a4d25cae1b575c3d52c6f536129a1b109   "docker-entrypoint.s…"   postgres   About an hour ago   Up 12 minutes (healthy)   
+
+==> Stack is up
+    frontend  : http://127.0.0.1:8080/
+    API       : http://127.0.0.1:8080/api/items
+    run checks: scripts/verify.sh
+EXIT CODE : 0
+

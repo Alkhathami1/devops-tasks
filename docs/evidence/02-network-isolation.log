@@ -1,0 +1,65 @@
+﻿----------------------------------------------------------------
+### Private network topology proof
+COMMAND   : ./scripts/isolation-check.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:27:01 +0300
+----------------------------------------------------------------
+=== Network isolation proof ===
+
+--- 1. Which containers publish host ports ---
+SERVICE    <no value>
+backend    [{ 3000 0 tcp}]
+nginx      [{0.0.0.0 8080 8080 tcp} {:: 8080 8080 tcp}]
+postgres   []
+
+[PASS] exactly one container publishes a host port -- count=1
+[PASS] nginx publishes 8080
+[PASS] backend publishes NO host port
+[PASS] postgres publishes NO host port
+
+--- 2. Postgres from the host (must fail) ---
+    curl 127.0.0.1:5432 -> exit=7
+[PASS] host cannot open a connection to Postgres on 5432
+
+--- 3. Backend from the host (must fail) vs through the proxy (must work) ---
+    direct  127.0.0.1:3000/health -> '000' (empty/000 means refused)
+[PASS] backend NOT reachable directly from the host on 3000 -- got '000'
+    proxied 127.0.0.1:8080/api-health -> 200
+[PASS] backend IS reachable through the proxy -- HTTP 200
+[PASS] backend /internal/* not exposed through the proxy -- HTTP 405
+
+--- 4. nginx -> postgres (must fail: nginx is not on internal-net) ---
+    nginx resolving 'postgres' -> exit=2
+[PASS] nginx cannot even resolve 'postgres'
+[PASS] nginx cannot connect to postgres:5432
+
+--- 5. backend -> postgres (must succeed: the one permitted path) ---
+    backend resolving 'postgres' -> 172.20.0.2        postgres  postgres
+[PASS] backend resolves 'postgres' on internal-net
+
+--- 6. internal-net egress (internal: true means no outbound route) ---
+    postgres resolving example.com -> exit=2
+[PASS] postgres has no outbound internet route
+
+--- 7. docker network inspect: membership ---
+  task02-edge-net:
+    - task02-backend
+    - task02-nginx
+
+    internal: false
+  task02-internal-net:
+    - task02-postgres
+    - task02-backend
+
+    internal: true
+[PASS] nginx on edge-net
+[PASS] backend on edge-net
+[PASS] postgres NOT on edge-net
+[PASS] backend on internal-net
+[PASS] postgres on internal-net
+[PASS] nginx NOT on internal-net
+[PASS] internal-net is marked internal: true
+
+RESULT: ISOLATION PROVEN - all checks passed
+EXIT CODE : 0
+

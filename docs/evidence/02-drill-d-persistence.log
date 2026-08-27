@@ -1,0 +1,44 @@
+﻿----------------------------------------------------------------
+### DRILL D: data persistence across down/up, and destruction by down -v
+COMMAND   : ./scripts/drills/03-persistence.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:26:05 +0300
+----------------------------------------------------------------
+=== DRILL D: data persistence ===
+
+--- volume configuration ---
+    name=task02-pgdata driver=local mountpoint=/var/lib/docker/volumes/task02-pgdata/_data
+    mounted at:  -> /run/secrets/postgres_password (bind)task02-pgdata -> /var/lib/postgresql/data (volume)
+
+--- write a marker row ---
+    marker  : persist-1787685966-1374
+    rowcount: 6
+
+--- 1. docker compose down (volumes retained) ---
+    containers after down: 0
+    task02-pgdata volume still present: 1
+[PASS] named volume survived 'docker compose down'
+
+--- bringing the stack back up ---
+    rowcount after up: 6 (was 6)
+    marker row present: 1
+[PASS] row count identical across down/up: 6
+[PASS] the specific marker row survived: persist-1787685966-1374
+    'welcome' seed row occurrences: 1
+[PASS] migration/seed is idempotent, no duplicate on restart
+
+--- 2. docker compose down -v (volumes destroyed) ---
+    This is the destructive variant. Proving it destroys data is the point:
+    it is what makes the survival above meaningful rather than accidental.
+    task02-pgdata volume present after down -v: 0
+[PASS] 'down -v' removed the named volume
+
+--- rebuilding from an empty volume ---
+    rowcount on the fresh volume: 2 (seed rows only)
+    marker row present: 0
+[PASS] marker row is GONE, confirming down -v destroyed the data
+[PASS] database re-seeded from scratch: 2 rows
+
+RESULT: DRILL D PASSED
+EXIT CODE : 0
+

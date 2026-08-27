@@ -1,0 +1,83 @@
+﻿----------------------------------------------------------------
+### DRILL E: database failure under a live backend; honest degradation, retry loop, reconnect
+COMMAND   : ./scripts/drills/04-db-failure.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:25:33 +0300
+----------------------------------------------------------------
+=== DRILL E: Postgres killed under a running backend ===
+
+--- baseline ---
+    /api-health : 200
+    body        : {"status":"ok","database":{"reachable":true,"check":true},"service":"backend","uptimeSeconds":44,"pid":1}
+    backend RestartCount: 0
+
+--- stopping Postgres ---
+    postgres status: exited
+
+--- behaviour while the database is down ---
+    /api-health -> HTTP 503
+    body: {"status":"degraded","database":{"reachable":false,"error":"database probe exceeded 2000ms"},"service":"backend","uptimeSeconds":48,"pid":1}
+[PASS] the response came from the backend itself, not an nginx timeout page
+    /api-health response time while DB is down: 2.004738s
+[PASS] health degraded honestly to 503 instead of claiming to be fine
+[PASS] body reports status=degraded
+[PASS] body reports the database as unreachable
+
+    /api/items -> HTTP 503
+    body: {"error":"database unavailable","detail":"getaddrinfo ENOTFOUND postgres"}
+[PASS] API returns 503 rather than an empty list that would look like 'no data'
+
+--- the proxy tier is unaffected ---
+    nginx /healthz -> HTTP 200
+    frontend /     -> HTTP 200
+[PASS] nginx still healthy and serving
+[PASS] static frontend still served during the outage
+
+--- did the backend survive, or crash-loop? ---
+    backend status      : running
+    backend RestartCount: 0 -> 0
+[PASS] backend stayed up and kept serving truthful errors
+[PASS] no crash-loop: the pool error handler kept the process alive
+
+--- restarting Postgres ---
+
+--- after recovery ---
+    /api-health -> HTTP 200
+    body: {"status":"ok","database":{"reachable":true,"check":true},"service":"backend","uptimeSeconds":64,"pid":1}
+    backend RestartCount: 0 (unchanged means it reconnected without restarting)
+    reconnect time: 1503 ms from 'compose start' to HTTP 200
+[PASS] backend reconnected to Postgres automatically
+[PASS] reconnected via the connection pool, with no container restart
+[PASS] data intact after the outage: 5 rows
+
+--- E2. backend STARTED while the database is already down ---
+    This exercises the application-level retry loop, which is the safety
+    net for cold starts. It matters because depends_on/service_healthy is
+    a Compose-time construct: when the DAEMON restarts, containers are
+    started by restart policy in arbitrary order and the dependency
+    ordering is NOT replayed. Without this loop, a backend that wins the
+    race against Postgres would crash-loop.
+
+    backend logs while its dependency is absent:
+      {"ts":"2026-08-25T19:25:51.151Z","level":"error","event":"items.list.failed","error":"getaddrinfo ENOTFOUND postgres"}
+      {"ts":"2026-08-25T19:25:54.256Z","level":"warn","event":"db.pool.error","error":"terminating connection due to administrator command"}
+      {"ts":"2026-08-25T19:25:54.986Z","level":"info","event":"backend.shutdown","signal":"SIGTERM"}
+      {"ts":"2026-08-25T19:25:56.078Z","level":"warn","event":"chaos.enabled","note":"CHAOS_ENABLED=true - /internal/chaos/{oom,crash} are live. Test affordance only."}
+      {"ts":"2026-08-25T19:25:56.080Z","level":"info","event":"backend.starting","port":3000,"db":{"host":"postgres","port":5432,"database":"appdb","user":"appuser"},"passwordSource":"file:/run/secrets/postgres_password","chaosEnabled":true}
+      {"ts":"2026-08-25T19:26:01.089Z","level":"warn","event":"db.waiting","attempt":1,"attempts":30,"error":"Connection terminated due to connection timeout"}
+
+    db.waiting retry events observed: 2
+[PASS] the retry loop is genuinely exercised, not merely present in the source
+    backend status while waiting: running
+[PASS] backend waits patiently instead of crash-looping
+
+    bringing Postgres back:
+      {"ts":"2026-08-25T19:26:01.089Z","level":"warn","event":"db.waiting","attempt":1,"attempts":30,"error":"Connection terminated due to connection timeout"}
+      {"ts":"2026-08-25T19:26:04.617Z","level":"info","event":"db.ready","attempt":2}
+      {"ts":"2026-08-25T19:26:04.630Z","level":"info","event":"db.migrated","migrationApplied":false,"rowsSeeded":0,"idempotent":true}
+      {"ts":"2026-08-25T19:26:04.633Z","level":"info","event":"backend.listening","port":3000,"pid":1}
+[PASS] backend connected as soon as Postgres returned, with no restart
+
+RESULT: DRILL E PASSED
+EXIT CODE : 0
+

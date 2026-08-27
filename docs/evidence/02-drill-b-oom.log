@@ -1,0 +1,66 @@
+﻿----------------------------------------------------------------
+### DRILL B: RAM exhaustion, OOMKilled: true, unattended recovery
+COMMAND   : ./scripts/drills/02-oom-kill.sh
+CWD       : /c/Users/abual/devops-tasks/02-docker-stack
+TIMESTAMP : 2026-08-25 22:29:09 +0300
+----------------------------------------------------------------
+=== DRILL B: RAM exhaustion -> OOM kill ===
+
+--- configured limits (requirement 4 evidence) ---
+    Memory limit : 268435456 bytes (256 MiB)
+    MemorySwap   : 268435456 bytes (256 MiB)
+    swap headroom: 0 MiB (0 = swap disabled, OOM cannot be masked)
+[PASS] a memory limit is actually applied
+[PASS] swap disabled, so exhaustion must produce an OOM kill
+
+--- PID 1 identity (the crux of this drill) ---
+    /proc/1/comm = node
+[PASS] the application IS PID 1, so an OOM kill takes down the container
+
+--- baseline ---
+    RestartCount : 0
+    host PID     : 520
+    memory usage : 18.85MiB / 256MiB
+
+--- triggering allocation inside PID 1 ---
+{"status":"allocating","pid":1}    allocating from 22:29:12.993
+
+--- watching for the kill ---
+    t+1020ms: OOMKilled=true status=running exit=137   <-- CAPTURED
+
+--- state AT THE MOMENT OF THE KILL (the evidence that matters) ---
+    State.OOMKilled : true
+    State.ExitCode  : 137
+                      (an OOM kill exits 137 = 128+SIGKILL. This field is
+                       sampled by polling, so it can read 0 when the sample
+                       lands mid-transition between the dead container and
+                       its replacement. State.OOMKilled above is the
+                       authoritative signal, not this exit code.)
+    observed at     : t+1020 ms after allocation began
+[PASS] State.OOMKilled captured as true - the cgroup limit genuinely killed the container
+
+--- state read a moment later, AFTER the restart policy acted ---
+    NOTE: these describe the REPLACEMENT container, not the one that died.
+    Docker resets State.OOMKilled/ExitCode when it starts the new process,
+    which is why a late inspect shows false/0. It is not a contradiction of
+    the capture above - it is a different container instance.
+    State.OOMKilled : false
+    State.ExitCode  : 0
+    State.Status    : running
+
+--- unattended recovery after the OOM ---
+    RestartCount : 0 -> 1
+    host PID     : 520 -> 1450
+    health       : 200
+    time from allocation start to healthy again: 2090 ms
+[PASS] restart policy fired after the OOM kill (an OOM is NOT an operator stop)
+[PASS] service fully functional after OOM recovery: 5 rows
+
+--- the other tiers were unaffected ---
+    postgres: running restarts=0
+    nginx   : running restarts=0
+[PASS] memory limit contained the blast radius: postgres never restarted
+
+RESULT: DRILL B PASSED
+EXIT CODE : 0
+
